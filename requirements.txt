@@ -1,0 +1,13 @@
+langchain
+langchain-community
+langgraph
+faiss-cpu
+pydantic
+python-dotenv
+beautifulsoup4
+requests
+streamlit
+wikipedia
+langchain-groq
+langchain-huggingface
+sentence-transformers
