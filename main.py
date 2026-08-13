@@ -116,7 +116,7 @@ def main():
     
     rag = AgenticRAG(directory=pdf_files)
 
-    # Example questions based on company policies
+    
     example_questions = [
         "What is the purpose of the company security policy?",
         "What are the main rules for remote work?",
