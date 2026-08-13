@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-# Add project root to path
+
 sys.path.append(str(Path(__file__).parent))
 
 from src.config.config import Config
@@ -24,23 +24,23 @@ class AgenticRAG:
         """
         print("🚀 Initializing Agentic RAG System...")
 
-        # Use data directory if none is provided
+        
         self.directory = directory or Path("data")
 
-        # Initialize components
+        
         self.llm = Config.get_llm()
 
         self.doc_processor = DocumentProcessor(
-            chunk_size=Config.CHUNK_SIZE,
-            chunk_overlap=Config.CHUNK_OVERLAP
+          model_name="all-MiniLM-L6-v2",
+          threshold=0.3
         )
 
         self.vector_store = VectorStore()
 
-        # Process documents and create vector store
+        
         self._setup_vectorstore()
 
-        # Build graph
+        
         self.graph_builder = GraphBuilder(
             retriever=self.vector_store.get_retriever(),
             llm=self.llm
@@ -103,17 +103,17 @@ class AgenticRAG:
 def main():
     """Main function"""
 
-    # PDF documents are stored in the data folder
+    
     data_directory = Path("data")
 
     pdf_files = [str(pdf) for pdf in data_directory.glob("*.pdf")]
 
-    # Check that the directory exists
+    
     if not data_directory.exists():
         print(f"❌ Data directory not found: {data_directory}")
         return
 
-    # Initialize RAG system
+    
     rag = AgenticRAG(directory=pdf_files)
 
     # Example questions based on company policies
@@ -131,7 +131,7 @@ def main():
         rag.ask(question)
         print("=" * 80 + "\n")
 
-    # Optional interactive mode
+    
     print("\n" + "=" * 80)
 
     user_input = input(

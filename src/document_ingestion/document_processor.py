@@ -4,6 +4,7 @@ from typing import List
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
+from src.semantic_chunker.semantic_chunker import ThresholdSematicChunker
 
 from typing import List, Union
 from pathlib import Path
@@ -16,21 +17,43 @@ from langchain_community.document_loaders import (
 
 class DocumentProcessor:
     """Handles document loading and processing"""
-    
-    def __init__(self, chunk_size: int = 500, chunk_overlap: int = 50):
-        """
-        Initialize document processor
+
+
+#    ###      recursivecharacter splitter code below ##### 
+#     def __init__(self, chunk_size: int = 500, chunk_overlap: int = 50):
+#        """
+#        Initialize document processor
         
-        Args:
-            chunk_size: Size of text chunks
-            chunk_overlap: Overlap between chunks
-        """
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
+#        Args:
+#            chunk_size: Size of text chunks
+#            chunk_overlap: Overlap between chunks
+#        """
+#        self.chunk_size = chunk_size
+#        self.chunk_overlap = chunk_overlap
+#        self.splitter = RecursiveCharacterTextSplitter(
+#            chunk_size=chunk_size,
+#            chunk_overlap=chunk_overlap
+#        )
+#        ################
+
+
+    
+    def __init__(
+    self,
+    model_name: str = "all-MiniLM-L6-v2",
+    threshold: float = 0.3
+    ):
+        
+     self.model_name = model_name
+     self.threshold = threshold
+
+     self.splitter = ThresholdSematicChunker(
+        model_name=model_name,
+        threshold=threshold
+    )
+
+    
+
     def load_from_url(self, url: str) -> List[Document]:
         """Load document(s) from a URL"""
         loader = WebBaseLoader(url)
