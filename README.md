@@ -1,59 +1,195 @@
-RAGForge
-Agentic RAG Knowledge Retrieval System
+🚀 RAGForge — Agentic RAG Knowledge Retrieval & Research System
 
-RAGForge is an Agentic RAG system built with LangGraph, ReAct agents, vector search, and Streamlit. It processes PDF knowledge bases, retrieves relevant information using semantic search, and dynamically uses external tools such as Wikipedia when additional general knowledge is required.
+An agentic Retrieval-Augmented Generation (RAG) system that intelligently decides how to answer a query by combining private PDF knowledge retrieval with external web-based knowledge.
 
-🚀 Features
-📄 PDF Knowledge Base — Load and process multiple PDF documents from a directory.
-✂️ Document Chunking — Splits documents into smaller chunks for efficient retrieval.
-🔍 Semantic Retrieval — Retrieves relevant document chunks from the vector store.
-🤖 ReAct Agent — Uses LangGraph's ReAct architecture for tool-based reasoning.
-🛠️ Tool Calling
-retriever_tool — Searches the indexed PDF knowledge base.
-wikipedia — Retrieves external general knowledge.
-🧠 Agentic Decision Making — The agent decides which tool is appropriate for a question.
-🌐 External Knowledge Fallback — Can answer general questions using Wikipedia.
-💬 Interactive Streamlit UI — User-friendly interface for asking questions.
-📚 Source Documents — Retrieved document chunks can be inspected from the UI.
-⚡ Response Time Tracking — Displays query processing time.
-🧩 Modular Architecture — Separate ingestion, vector store, graph, state, and UI components.
-🏗️ Architecture
-                    ┌─────────────────────┐
-                    │    Streamlit UI     │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │   Agentic RAG App   │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │    LangGraph        │
-                    │    ReAct Agent      │
-                    └──────────┬──────────┘
-                               │
-                  ┌────────────┴────────────┐
-                  │                         │
-                  ▼                         ▼
-        ┌──────────────────┐      ┌──────────────────┐
-        │ Retriever Tool   │      │ Wikipedia Tool   │
-        └────────┬─────────┘      └────────┬─────────┘
-                 │                         │
-                 ▼                         ▼
-        ┌──────────────────┐      ┌──────────────────┐
-        │  Vector Store    │      │   Wikipedia API  │
-        └────────┬─────────┘      └──────────────────┘
-                 │
-                 ▼
-        ┌──────────────────┐
-        │   PDF Documents  │
-        └──────────────────┘
+RAGForge is an AI-powered knowledge retrieval and research system built with LangGraph, ReAct agents, LangChain, vector search, and Streamlit.
+
+Unlike a traditional RAG pipeline that always follows a fixed:
+
+Query → Retrieve → Generate
+
+workflow, RAGForge introduces an agentic reasoning layer that dynamically decides whether a question should be answered using the user's private document knowledge base or external knowledge through Wikipedia.
+
+🎯 Why RAGForge?
+
+Traditional RAG systems are highly dependent on a single retrieval pipeline.
+
+If the required information is not present in the indexed documents, the system may return an incomplete answer or hallucinate.
+
+RAGForge addresses this by giving the LLM access to multiple tools:
+
+                         ┌─────────────────────┐
+                         │      User Query     │
+                         └──────────┬──────────┘
+                                    │
+                                    ▼
+                         ┌─────────────────────┐
+                         │   ReAct AI Agent    │
+                         │   LangGraph         │
+                         └──────────┬──────────┘
+                                    │
+                     ┌──────────────┴──────────────┐
+                     │                             │
+                     ▼                             ▼
+          ┌───────────────────┐        ┌────────────────────┐
+          │ Retriever Tool    │        │ Wikipedia Tool     │
+          │                   │        │                    │
+          │ Private PDFs      │        │ External Knowledge │
+          └─────────┬─────────┘        └──────────┬─────────┘
+                    │                             │
+                    ▼                             ▼
+          ┌───────────────────┐        ┌────────────────────┐
+          │ Vector Store      │        │ Wikipedia API      │
+          └─────────┬─────────┘        └──────────┬─────────┘
+                    │                             │
+                    └──────────────┬──────────────┘
+                                   ▼
+                         ┌─────────────────────┐
+                         │    Final Answer     │
+                         └─────────────────────┘
+
+The agent decides which source is appropriate for the query instead of blindly retrieving from one knowledge base.
+
+✨ Key Features
+📄 Private PDF Knowledge Base
+Load multiple PDF documents from the data/ directory.
+Automatically process and prepare documents for retrieval.
+Supports document-centric question answering.
+✂️ Intelligent Document Processing
+PDF document loading
+Text extraction
+Recursive character-based chunking
+Chunk generation for efficient semantic retrieval
+🔍 Semantic Retrieval
+Converts document chunks into embeddings.
+Stores embeddings in a vector database.
+Retrieves semantically relevant chunks for user queries.
+🤖 ReAct Agent
+
+Powered by LangGraph, the system uses an agentic workflow that can reason about the user's request and select the appropriate tool.
+
+The agent can choose between:
+
+Retriever Tool
+      ↓
+Private PDF Knowledge Base
+
+or
+
+Wikipedia Tool
+      ↓
+External Knowledge
+🧠 Agentic Decision Making
+
+Instead of using a fixed retrieval pipeline:
+
+Query
+ ↓
+Retriever
+ ↓
+LLM
+ ↓
+Answer
+
+RAGForge follows:
+
+Query
+ ↓
+ReAct Agent
+ ↓
+Reason about the task
+ ↓
+Select appropriate tool
+ ↓
+Retrieve information
+ ↓
+Generate response
+🌐 External Knowledge Fallback
+
+When a question requires general knowledge outside the private document collection, the agent can use Wikipedia.
+
+Example:
+
+"What is quantum computing?"
+
+can be handled using external knowledge.
+
+While:
+
+"What is the company's leave policy?"
+
+can be answered from the indexed PDF knowledge base.
+
+💬 Streamlit Interface
+
+Provides an interactive interface for:
+
+Asking questions
+Receiving AI-generated responses
+Inspecting retrieved source documents
+Monitoring response processing time
+📚 Source Inspection
+
+Retrieved document chunks can be inspected to understand where the answer originated from.
+
+⚡ Response Time Tracking
+
+The application tracks query processing time, providing basic visibility into system performance.
+
+🧩 Modular Architecture
+
+The project separates:
+
+Document ingestion
+Vector storage
+Agent state
+LangGraph workflow
+Configuration
+User interface
+
+This makes the system easier to extend and maintain.
+
+🏗️ System Architecture
+                         ┌───────────────────────┐
+                         │      Streamlit UI     │
+                         └───────────┬───────────┘
+                                     │
+                                     ▼
+                         ┌───────────────────────┐
+                         │    RAGForge Engine    │
+                         └───────────┬───────────┘
+                                     │
+                                     ▼
+                         ┌───────────────────────┐
+                         │   LangGraph ReAct     │
+                         │        Agent          │
+                         └───────────┬───────────┘
+                                     │
+                         ┌───────────┴───────────┐
+                         │                       │
+                         ▼                       ▼
+              ┌──────────────────┐   ┌──────────────────┐
+              │ Retriever Tool   │   │ Wikipedia Tool   │
+              └────────┬─────────┘   └────────┬─────────┘
+                       │                      │
+                       ▼                      ▼
+              ┌──────────────────┐   ┌──────────────────┐
+              │  Vector Store    │   │  Wikipedia API   │
+              └────────┬─────────┘   └──────────────────┘
+                       │
+                       ▼
+              ┌──────────────────┐
+              │   PDF Documents  │
+              │  Private KB      │
+              └──────────────────┘
 🔄 RAG Pipeline
+
+RAGForge processes documents through the following pipeline:
+
 PDF Documents
       │
       ▼
-PyPDFDirectoryLoader
+PDF Loader
       │
       ▼
 Document Processing
@@ -71,16 +207,53 @@ Vector Store
 Retriever
       │
       ▼
+Retriever Tool
+      │
+      ▼
+LangGraph ReAct Agent
+      │
+      ├───────────────► Private Knowledge
+      │
+      └───────────────► Wikipedia
+                       External Knowledge
+      │
+      ▼
+Final Answer
+🧠 Agentic RAG vs Traditional RAG
+Traditional RAG
+User Query
+    ↓
+Retriever
+    ↓
+Retrieved Context
+    ↓
+LLM
+    ↓
+Answer
+
+The retrieval mechanism is mostly predetermined.
+
+RAGForge
+User Query
+    ↓
 ReAct Agent
-      │
-      ├──────────────► Retriever Tool ──► PDF Knowledge
-      │
-      └──────────────► Wikipedia Tool ──► External Knowledge
-                              │
-                              ▼
-                         Final Answer
+    ↓
+Reasoning / Tool Selection
+    │
+    ├──► Retriever Tool
+    │       ↓
+    │   Private PDFs
+    │
+    └──► Wikipedia Tool
+            ↓
+       External Knowledge
+    ↓
+Final Answer
+
+This allows the system to dynamically select the most appropriate knowledge source.
+
 📂 Project Structure
-RAGForge/
+RAGFury-Agentic-Knowledge-Retrieval-Research-System/
 │
 ├── data/
 │   └── *.pdf
@@ -108,139 +281,401 @@ RAGForge/
 ├── main.py
 ├── streamlit_app.py
 ├── requirements.txt
+├── pyproject.toml
+├── uv.lock
+├── .python-version
+├── .gitignore
 └── README.md
 🛠️ Tech Stack
 Technology	Purpose
-Python	Core development
+Python	Core application development
 LangChain	LLM and RAG components
 LangGraph	Agent workflow orchestration
-ReAct Agent	Agentic reasoning and tool usage
+ReAct Agents	Reasoning and tool selection
 Vector Database	Semantic document retrieval
+Embeddings	Semantic representation of documents
 PyPDF	PDF document processing
 Wikipedia API	External knowledge retrieval
-Streamlit	Web interface
-Hugging Face	Embeddings / NLP models
+Streamlit	Interactive web interface
+Hugging Face	Embedding / NLP model support
 Git & GitHub	Version control
-📥 Installation
-1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/RAGForge.git
-cd RAGForge
-2. Create a virtual environment
+⚙️ How It Works
+1. Document Ingestion
+
+PDF files placed inside the data/ directory are loaded by the document ingestion pipeline.
+
+PDF
+ ↓
+Text Extraction
+ ↓
+Document Objects
+2. Document Chunking
+
+Large documents are divided into smaller chunks using recursive character-based splitting.
+
+Large Document
+      ↓
+ ┌────┼────┐
+ ▼    ▼    ▼
+Chunk Chunk Chunk
+
+This allows the retrieval system to search for focused pieces of information rather than entire documents.
+
+3. Embedding Generation
+
+Each document chunk is converted into a numerical vector representation.
+
+Text Chunk
+    ↓
+Embedding Model
+    ↓
+Vector Representation
+4. Vector Storage
+
+The generated embeddings are stored in a vector store for semantic similarity search.
+
+5. Query Processing
+
+When a user asks a question:
+
+User Query
+    ↓
+ReAct Agent
+    ↓
+Tool Selection
+
+The agent determines whether the query requires:
+
+Private document retrieval
+External Wikipedia knowledge
+6. Retrieval
+
+For document-based questions, the retriever searches the vector store and returns the most relevant chunks.
+
+7. Response Generation
+
+The retrieved information is passed back into the agent workflow, which generates the final answer.
+
+💻 Installation
+1. Clone the Repository
+git clone https://github.com/aviral-dot/RAGFury-Agentic-Knowledge-Retrieval-Research-System.git
+
+cd RAGFury-Agentic-Knowledge-Retrieval-Research-System
+2. Create a Virtual Environment
+Windows
 python -m venv .venv
 
-Activate it on Windows:
+Activate it:
 
 .venv\Scripts\activate
-3. Install dependencies
+Linux / macOS
+python -m venv .venv
+source .venv/bin/activate
+📦 Install Dependencies
+
+Using pip:
+
 pip install -r requirements.txt
-4. Configure environment variables
 
-Create a .env file:
+Or, if using uv:
 
-GROQ_API_KEY=your_api_key
+uv sync
+🔐 Environment Variables
+
+Create a .env file in the project root:
+
+GROQ_API_KEY=your_groq_api_key
 HF_TOKEN=your_huggingface_token
 
-Never commit your .env file or API keys to GitHub.
+Replace the values with your own API credentials.
 
-📄 Add Documents
+⚠️ Never commit .env files, API keys, tokens, or credentials to GitHub.
 
-Place your PDF files inside:
+📄 Add Your Documents
+
+Place PDF files inside:
 
 data/
 
-For example:
+Example:
 
 data/
 ├── company_policy.pdf
 ├── employee_handbook.pdf
+├── technical_documentation.pdf
 └── security_policy.pdf
 
-RAGForge automatically processes the PDFs from the directory.
+The ingestion pipeline processes the documents from this directory.
 
-▶️ Run the Application
-CLI
+▶️ Running the Application
+Run the RAG Pipeline
 python main.py
-Streamlit
+Launch the Streamlit UI
 python -m streamlit run streamlit_app.py
 
-Then open:
+The application will be available at:
 
 http://localhost:8501
 💡 Example Queries
-Questions about your documents
+📚 Private Knowledge Base
 What is the company's leave policy?
 What is the employee notice period?
-What are the security requirements mentioned in the policy?
+What security requirements are mentioned in the document?
 
-The agent can use the retriever tool to search the PDF knowledge base.
+The agent can use the Retriever Tool to search the private PDF knowledge base.
 
-General knowledge
+🌐 External Knowledge
 Who is Brad Pitt?
 What is quantum computing?
+How does nuclear fusion work?
 
-For general external knowledge, the agent can use the Wikipedia tool.
+The agent can use the Wikipedia Tool when external knowledge is required.
 
-🤖 Agentic RAG vs Traditional RAG
+🔬 Example Agent Flow
 
-Traditional RAG generally follows:
+For a document-specific query:
 
-Question
-   ↓
-Retriever
-   ↓
-Context
-   ↓
-LLM
-   ↓
-Answer
-
-RAGForge introduces an agentic layer:
-
-Question
-   ↓
+User
+ │
+ │ "What is the leave policy?"
+ ▼
 ReAct Agent
-   ↓
-Decide which tool to use
-   │
-   ├── Retriever → PDF Knowledge Base
-   │
-   └── Wikipedia → External Knowledge
-   ↓
+ │
+ │ Select Retriever Tool
+ ▼
+Vector Search
+ │
+ ▼
+Relevant PDF Chunks
+ │
+ ▼
+LLM
+ │
+ ▼
 Final Answer
 
-This allows the system to dynamically decide how to obtain information instead of relying on a fixed retrieval pipeline.
+For a general knowledge query:
 
-🔮 Future Improvements
+User
+ │
+ │ "What is quantum computing?"
+ ▼
+ReAct Agent
+ │
+ │ Select Wikipedia Tool
+ ▼
+Wikipedia
+ │
+ ▼
+Retrieved Information
+ │
+ ▼
+LLM
+ │
+ ▼
+Final Answer
+🧪 Engineering Concepts Demonstrated
 
-Planned improvements include:
+This project demonstrates practical AI engineering concepts including:
 
- Hybrid Search — BM25 + vector search
- Reranking
- Semantic Chunking
- Query Expansion
- HyDE retrieval
- RAG evaluation with RAGAS / DeepEval
- LangSmith observability
- Conversation memory
- Streaming responses
- Document upload directly through Streamlit
- Authentication and user-specific knowledge bases
- Retrieval confidence / citations
- Production deployment with Docker
-🎯 Project Goal
+Retrieval-Augmented Generation
+Agentic RAG
+ReAct Agents
+LangGraph workflows
+Tool calling
+Semantic search
+Vector embeddings
+Vector databases
+Document ingestion
+Document chunking
+LLM orchestration
+External knowledge retrieval
+State management
+Modular AI architecture
+Streamlit application development
+📈 Future Improvements
 
-RAGForge demonstrates how agentic workflows can be combined with Retrieval-Augmented Generation to build a more flexible knowledge assistant capable of working with private document collections while also accessing external information when required.
+The architecture is designed to support more advanced production-oriented RAG capabilities.
+
+🔎 Advanced Retrieval
+
+Hybrid Search — BM25 + Vector Search
+
+Cross-Encoder Reranking
+
+Semantic Chunking
+
+Query Expansion
+
+HyDE Retrieval
+
+Multi-query Retrieval
+
+🧠 Advanced Agentic RAG
+
+Query Planning
+
+Corrective RAG
+
+Self-RAG
+
+Adaptive RAG
+
+Multi-step Research Agent
+
+Retrieval confidence scoring
+
+📊 Evaluation & Observability
+
+RAGAS evaluation
+
+DeepEval evaluation
+
+LangSmith tracing
+
+Retrieval metrics
+
+Answer faithfulness evaluation
+
+Latency monitoring
+
+💾 Application Features
+
+Conversation memory
+
+Streaming responses
+
+Direct document upload
+
+User authentication
+
+User-specific knowledge bases
+
+Persistent chat history
+
+Citation generation
+
+🚀 Productionization
+
+FastAPI backend
+
+Docker deployment
+
+Production vector database
+
+API authentication
+
+Rate limiting
+
+Structured logging
+
+Automated testing
+
+CI/CD pipeline
+
+🏆 What Makes This Project Different?
+
+RAGForge is not just a basic:
+
+PDF → Embeddings → Vector Search → LLM
+
+application.
+
+It introduces an agentic decision-making layer that allows the system to determine how information should be obtained.
+
+The architecture combines:
+
+RAG
+ +
+Vector Search
+ +
+LangGraph
+ +
+ReAct Agents
+ +
+Tool Calling
+ +
+External Knowledge
+
+This makes the project a practical demonstration of how modern Agentic AI and RAG systems can be combined to build knowledge-intensive applications.
+
+📊 High-Level Design
+                    ┌─────────────────────┐
+                    │       USER          │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │    Streamlit UI     │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │   LangGraph Agent   │
+                    │      ReAct          │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────┴──────────┐
+                    │                     │
+                    ▼                     ▼
+             ┌─────────────┐      ┌──────────────┐
+             │  Retriever  │      │  Wikipedia   │
+             │    Tool     │      │     Tool     │
+             └──────┬──────┘      └──────┬───────┘
+                    │                    │
+                    ▼                    ▼
+             ┌─────────────┐      ┌──────────────┐
+             │ Vector DB   │      │ Wikipedia API│
+             └──────┬──────┘      └──────────────┘
+                    │
+                    ▼
+             ┌─────────────┐
+             │ PDF Corpus  │
+             └─────────────┘
+                    │
+                    ▼
+             ┌─────────────┐
+             │ Final Answer│
+             └─────────────┘
+🎓 Learning Outcomes
+
+Through this project, the following AI engineering concepts were explored:
+
+Retrieval
+
+Understanding how documents can be transformed into embeddings and retrieved using semantic similarity.
+
+Agentic Workflows
+
+Understanding how LLM agents can reason about tasks and dynamically select tools.
+
+LangGraph
+
+Building stateful AI workflows using graph-based orchestration.
+
+Tool Calling
+
+Connecting LLM reasoning with external capabilities such as retrieval and Wikipedia.
+
+RAG Architecture
+
+Designing an end-to-end retrieval pipeline from document ingestion to response generation.
+
+AI Application Development
+
+Building an interactive AI application using Streamlit.
 
 👨‍💻 Author
 
 Aviral
 
-Built as an AI Engineering project to explore:
+AI Engineering Project focused on:
 
-Agentic RAG
-LangGraph
-ReAct Agents
-Vector Search
-LLM Tool Calling
-Document Retrieval
-Generative AI Applications
+🤖 Agentic AI
+🧠 Generative AI
+📚 Retrieval-Augmented Generation
+🔎 Semantic Search
+🔗 LangChain
+🕸️ LangGraph
+🛠️ ReAct Agents
+🧩 LLM Tool Calling
