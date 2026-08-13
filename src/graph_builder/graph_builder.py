@@ -29,14 +29,14 @@ class GraphBuilder:
         builder = StateGraph(RAGState)
         
         # Add nodes
-        builder.add_node("retriever", self.nodes.retrieve_docs)
+        # builder.add_node("retriever", self.nodes.retrieve_docs)
         builder.add_node("responder", self.nodes.generate_answer)
         
         # Set entry point
-        builder.set_entry_point("retriever")
+        builder.set_entry_point("responder")
         
         # Add edges
-        builder.add_edge("retriever", "responder")
+        # builder.add_edge("retriever", "responder")
         builder.add_edge("responder", END)
         
         # Compile graph

@@ -120,7 +120,7 @@ def main():
     example_questions = [
         "What is the purpose of the company security policy?",
         "What are the main rules for remote work?",
-        "What should employees do to protect confidential information?"
+        "What is Sample Company Remote Work Policy"
     ]
 
     print("=" * 80)
