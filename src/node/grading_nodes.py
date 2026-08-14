@@ -57,10 +57,11 @@ class GradingNodes:
         )
 
         prompt = f"""
-You are a document relevance grader.
+You are a document relevance grader for a Retrieval-Augmented
+Generation (RAG) system.
 
-Determine whether the retrieved documents contain
-information that is relevant to answering the user's question.
+Your task is to determine whether the retrieved document content
+is relevant and useful for answering the user's question.
 
 User question:
 {question}
@@ -68,15 +69,31 @@ User question:
 Retrieved documents:
 {context}
 
-Evaluate the documents based on relevance to the question.
+Grading rules:
 
-Return:
-- relevant=True if the documents contain useful information
-  for answering the question.
-- relevant=False if the documents are unrelated, insufficient,
-  or do not contain useful information.
+1. Return relevant=True if ANY retrieved document contains
+   information that directly or indirectly helps answer the question.
 
-Provide a brief reason for your decision.
+2. Return relevant=True when the document contains the answer
+   or contains specific facts needed to answer the question.
+
+3. Semantic matches count as relevant. Do not require exact
+   keyword matches.
+
+4. Minor spelling or grammar mistakes in the user's question
+   must NOT affect relevance.
+
+5. Do NOT require the entire source document to be retrieved.
+   A single relevant chunk is sufficient.
+
+6. Return relevant=False only when the retrieved documents
+   genuinely do not contain useful information for answering
+   the question.
+
+User questions may use different wording from the document.
+Judge based on meaning, not exact wording.
+
+Return a brief reason explaining your decision.
 """
 
         result = self.grader.invoke(prompt)

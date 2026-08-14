@@ -116,7 +116,7 @@ def main():
 
     example_questions = [
         "How much sick leave can an employee take?",
-        "What is working hour of remote employees?"
+        "What time does the remote work day start and end?"
     ]
 
     print("=" * 80)
