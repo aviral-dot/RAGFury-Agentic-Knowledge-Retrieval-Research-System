@@ -1,85 +1,270 @@
 # 🚀 RAGFury — Agentic Knowledge Retrieval & Research System
 
-> **An agentic Retrieval-Augmented Generation (RAG) system that combines private document retrieval with external knowledge search, using semantic chunking, hybrid dense-sparse retrieval, and a LangGraph ReAct agent for intelligent tool selection.**
+> **An agentic Retrieval-Augmented Generation (RAG) system that intelligently chooses between private document knowledge and external knowledge, while using semantic chunking, hybrid retrieval, document relevance grading, query rewriting, and LangGraph ReAct agents for more reliable question answering.**
 
-RAGFury is an AI-powered knowledge retrieval and research system built with **Python, LangChain, LangGraph, ReAct agents, FAISS, BM25, Sentence Transformers, Groq, Wikipedia, and Streamlit**.
+RAGFury is an **Agentic RAG and knowledge-research system** built with Python, LangChain, LangGraph, ReAct agents, FAISS, BM25, Sentence Transformers, Groq, Wikipedia, and Streamlit.
 
-Unlike a conventional RAG pipeline that always follows:
+The system is designed around an important problem in real-world RAG:
 
-```text
-Query → Retrieve → Generate
-```
+> **What should the system do when the user's question may belong to the private knowledge base, but the retrieved documents are not actually relevant?**
 
-RAGFury introduces an **agentic reasoning layer** that can select between:
+Instead of blindly generating an answer from the first retrieved documents, RAGFury introduces **agentic source selection and corrective retrieval**.
 
-* 🔎 **Private Knowledge Retrieval** — searches indexed PDF documents.
-* 🌐 **External Knowledge Retrieval** — searches Wikipedia when general/external knowledge is required.
+The system can:
 
-The system also uses **threshold-based semantic chunking** and **hybrid retrieval** to improve document search.
+* 🔎 Search a private PDF knowledge base.
+* 🌐 Search Wikipedia for external knowledge.
+* 🧠 Dynamically select the appropriate knowledge source using a ReAct agent.
+* 📊 Grade retrieved documents for relevance.
+* ✏️ Rewrite unsuccessful queries.
+* 🔄 Retry retrieval when the retrieved context is not relevant.
+* 🧩 Use semantic chunking instead of only fixed-size splitting.
+* 🔗 Combine dense FAISS retrieval with sparse BM25 retrieval.
+* 💬 Provide an interactive Streamlit interface.
 
 ---
 
-## 🎯 Why RAGFury?
+# 🎯 Why RAGFury?
 
-Traditional RAG systems generally depend on a predetermined retrieval pipeline. This works well when the answer exists inside the indexed knowledge base, but is less useful when the required information is outside that corpus.
-
-RAGFury addresses this by giving a ReAct agent access to multiple tools:
+A conventional RAG pipeline usually looks like:
 
 ```text
-                         ┌─────────────────────┐
-                         │      User Query     │
-                         └──────────┬──────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │   LangGraph ReAct   │
-                         │       Agent         │
-                         └──────────┬──────────┘
-                                    │
-                       ┌────────────┴────────────┐
-                       │                         │
-                       ▼                         ▼
-              ┌─────────────────┐       ┌─────────────────┐
-              │ Retriever Tool   │       │ Wikipedia Tool  │
-              │ Private PDFs     │       │ External Web KB │
-              └────────┬────────┘       └────────┬────────┘
-                       │                         │
-                       ▼                         ▼
-              ┌─────────────────┐       ┌─────────────────┐
-              │ FAISS + BM25    │       │ Wikipedia API   │
-              └────────┬────────┘       └────────┬────────┘
-                       │                         │
-                       └────────────┬────────────┘
-                                    ▼
-                         ┌─────────────────────┐
-                         │    Final Answer     │
-                         └─────────────────────┘
+User Query
+    ↓
+Retriever
+    ↓
+Retrieved Context
+    ↓
+LLM
+    ↓
+Answer
 ```
 
-The agent determines **which knowledge source is appropriate for the query instead of blindly relying on a single retrieval source**.
+This approach assumes that:
+
+1. the query belongs to the indexed knowledge base, and
+2. the retriever will return relevant documents.
+
+In practice, both assumptions can fail.
+
+For example, suppose the indexed PDF contains information about:
+
+```text
+Leave Policy
+Remote Work Policy
+Employee Benefits
+```
+
+and the user asks:
+
+```text
+What is the company's security policy?
+```
+
+The retriever may still return documents because they contain words such as:
+
+```text
+company
+employee
+policy
+```
+
+But those documents may have **nothing to do with security**.
+
+RAGFury addresses this problem through two levels of decision-making:
+
+### Level 1 — Agentic Knowledge-Source Selection
+
+A LangGraph ReAct agent decides whether the query should be handled using:
+
+```text
+Private Retriever Tool
+```
+
+or:
+
+```text
+Wikipedia Tool
+```
+
+### Level 2 — Corrective Retrieval
+
+When the private retriever is selected, retrieved documents are evaluated for relevance.
+
+```text
+Retrieve
+   ↓
+Grade Documents
+   ↓
+Relevant?
+ ┌─┴──────────────┐
+ │                │
+Yes               No
+ │                │
+ ▼                ▼
+Generate       Rewrite Query
+                  │
+                  ▼
+               Retrieve
+                  │
+                  ▼
+              Grade Again
+```
+
+This makes the RAG pipeline more robust than simply retrieving once and generating immediately.
+
+---
+
+# 🧠 Core Architecture
+
+The high-level architecture of RAGFury is:
+
+```text
+                         ┌──────────────────────┐
+                         │      User Query      │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │   LangGraph ReAct    │
+                         │        Agent         │
+                         └──────────┬───────────┘
+                                    │
+                     Agentic Tool Selection
+                                    │
+                    ┌───────────────┴───────────────┐
+                    │                               │
+                    ▼                               ▼
+          ┌───────────────────┐           ┌───────────────────┐
+          │  Retriever Tool   │           │  Wikipedia Tool   │
+          │   Private PDFs    │           │ External Knowledge│
+          └─────────┬─────────┘           └─────────┬─────────┘
+                    │                               │
+                    ▼                               ▼
+          ┌───────────────────┐               Wikipedia API
+          │  Hybrid Retrieval │                     │
+          │   FAISS + BM25    │                     │
+          └─────────┬─────────┘                     │
+                    │                               │
+                    ▼                               ▼
+          ┌───────────────────┐              ┌────────────────┐
+          │ Document Grader   │              │    Generate    │
+          └─────────┬─────────┘              └───────┬────────┘
+                    │                                │
+              ┌─────┴─────┐                          │
+              │           │                          │
+           Relevant    Irrelevant                    │
+              │           │                          │
+              ▼           ▼                          │
+          Generate   Rewrite Query                  │
+                          │                          │
+                          ▼                          │
+                       Retrieve                     │
+                          │                          │
+                          └────────────┬─────────────┘
+                                       ▼
+                              ┌─────────────────┐
+                              │   Final Answer  │
+                              └─────────────────┘
+```
+
+The key architectural principle is:
+
+> **The ReAct agent selects the knowledge source. The selected retrieval workflow then performs the appropriate retrieval and validation steps.**
+
+There is no need for a separate deterministic `rag vs wikipedia` router.
 
 ---
 
 # ✨ Key Features
 
-### 📄 Private PDF Knowledge Base
+## 🤖 1. Agentic Knowledge-Source Selection
 
-* Load multiple PDF documents from the `data/` directory.
-* Extract and process document content.
-* Build a searchable private knowledge base.
-* Answer document-specific questions from indexed content.
+RAGFury uses a **LangGraph ReAct agent** with multiple tools.
 
-### ✂️ Threshold-Based Semantic Chunking
+The agent has access to:
 
-Instead of relying only on fixed-size chunks, RAGFury uses a semantic chunking strategy based on sentence-level embeddings.
+```text
+┌──────────────────────────┐
+│ Retriever Tool           │
+│ Private PDF Knowledge    │
+└──────────────────────────┘
 
-The chunker:
+┌──────────────────────────┐
+│ Wikipedia Tool           │
+│ External Knowledge       │
+└──────────────────────────┘
+```
 
-1. Splits documents into sentences.
-2. Generates sentence embeddings.
-3. Calculates cosine similarity between consecutive sentences.
-4. Keeps semantically related sentences together.
-5. Starts a new chunk when similarity falls below the configured threshold.
+The agent determines which tool is appropriate for the user's question.
+
+For example:
+
+```text
+"What is the employee leave policy?"
+```
+
+can be handled by:
+
+```text
+Retriever Tool
+```
+
+while:
+
+```text
+"What is quantum computing?"
+```
+
+can be handled by:
+
+```text
+Wikipedia Tool
+```
+
+This makes the system more flexible than a fixed RAG pipeline.
+
+---
+
+# 📄 2. Private PDF Knowledge Base
+
+RAGFury supports PDF-based private knowledge retrieval.
+
+Documents placed in:
+
+```text
+data/
+```
+
+are processed and transformed into searchable knowledge.
+
+The ingestion pipeline is:
+
+```text
+PDF Documents
+      ↓
+PDF Loading
+      ↓
+Document Processing
+      ↓
+Sentence Splitting
+      ↓
+Semantic Chunking
+      ↓
+Embeddings
+      ↓
+Hybrid Retrieval Index
+```
+
+The private knowledge base is completely separate from the external Wikipedia source.
+
+---
+
+# ✂️ 3. Threshold-Based Semantic Chunking
+
+Instead of relying only on fixed-size chunks, RAGFury uses a **sentence-level semantic chunking strategy**.
+
+The process is:
 
 ```text
 Document
@@ -95,57 +280,224 @@ Similarity Threshold
 Semantic Chunks
 ```
 
-This allows chunk boundaries to follow changes in meaning rather than only character count.
+Consecutive sentences are compared using their embeddings.
 
-### 🔎 Hybrid Retrieval
+If the semantic similarity remains sufficiently high, the sentences remain in the same chunk.
 
-RAGFury combines **dense semantic retrieval** with **sparse lexical retrieval**.
+When the similarity drops below the configured threshold, a new chunk is created.
+
+This allows chunk boundaries to better follow **changes in semantic meaning**.
+
+The project uses:
 
 ```text
-                 Query
-                   │
-          ┌────────┴────────┐
-          ▼                 ▼
-   Dense Retrieval    Sparse Retrieval
-       FAISS               BM25
-          │                 │
-          └────────┬────────┘
-                   ▼
-          Hybrid Retrieval
-                   │
-                   ▼
-          Relevant Documents
+Embedding Model:
+all-MiniLM-L6-v2
 ```
 
-* **FAISS** captures semantic similarity.
-* **BM25** captures keyword and exact-term relevance.
-* The retrieval signals are combined through LangChain's ensemble retrieval mechanism.
+with the configured semantic similarity threshold.
 
-### 🤖 ReAct Agent
+---
 
-The system uses a **LangGraph-powered ReAct agent** with tool calling.
+# 🔎 4. Hybrid Retrieval
 
-The agent can select between:
+The private document retriever combines two retrieval strategies:
 
 ```text
-Retriever Tool
+                    Query
+                      │
+             ┌────────┴────────┐
+             │                 │
+             ▼                 ▼
+       Dense Search       Sparse Search
+          FAISS                BM25
+             │                 │
+             └────────┬────────┘
+                      ▼
+              Hybrid Retrieval
+                      │
+                      ▼
+              Candidate Documents
+```
+
+### FAISS
+
+FAISS provides dense vector similarity search.
+
+It is useful for finding documents that are **semantically similar** to the query even when the exact keywords are different.
+
+### BM25
+
+BM25 provides sparse lexical retrieval.
+
+It is useful when exact words, phrases, identifiers, or domain-specific terminology matter.
+
+### Combined Retrieval
+
+The two retrieval signals are combined into a hybrid retriever.
+
+This provides both:
+
+```text
+Semantic similarity
+```
+
+and:
+
+```text
+Lexical relevance
+```
+
+rather than relying on only one retrieval strategy.
+
+---
+
+# 📊 5. Document Relevance Grading
+
+One of the important reliability features of RAGFury is **retrieved-document grading**.
+
+A retriever can return documents that are technically similar to a query but irrelevant to the actual question.
+
+Therefore, after retrieval, the system evaluates whether the retrieved context is relevant.
+
+```text
+Query
+  ↓
+Retrieve Documents
+  ↓
+Document Grader
+  ↓
+Is Context Relevant?
+```
+
+The grader produces a relevance decision.
+
+### Relevant Documents
+
+```text
+Retrieve
+   ↓
+Grade
+   ↓
+Relevant
+   ↓
+Generate Answer
+```
+
+### Irrelevant Documents
+
+```text
+Retrieve
+   ↓
+Grade
+   ↓
+Irrelevant
+   ↓
+Rewrite Query
+   ↓
+Retrieve Again
+```
+
+This prevents the system from immediately generating an answer from obviously unrelated retrieved context.
+
+---
+
+# ✏️ 6. Query Rewriting
+
+When the retrieved documents are judged irrelevant, RAGFury does not simply give up after the first retrieval attempt.
+
+Instead, the query can be rewritten to improve retrieval.
+
+```text
+Original Query
       ↓
-Private PDF Knowledge Base
+Retrieve
+      ↓
+Grade
+      ↓
+Irrelevant
+      ↓
+Query Rewriter
+      ↓
+Improved Query
+      ↓
+Retrieve Again
 ```
 
-or:
+The goal is to transform an unsuccessful query into one that is more useful for the document retriever.
+
+For example:
 
 ```text
+Original:
+"What is the company's security policy?"
+```
+
+may be reformulated into a more retrieval-oriented query based on the available knowledge context.
+
+The retry process is bounded so that the graph does not enter an uncontrolled retrieval loop.
+
+---
+
+# 🔄 7. Corrective RAG Workflow
+
+The private-document path can therefore be viewed as a **Corrective RAG-style workflow**:
+
+```text
+                 User Query
+                     │
+                     ▼
+                  Retrieve
+                     │
+                     ▼
+               Grade Documents
+                     │
+              ┌──────┴──────┐
+              │             │
+          Relevant       Irrelevant
+              │             │
+              ▼             ▼
+          Generate      Rewrite Query
+                            │
+                            ▼
+                         Retrieve
+                            │
+                            ▼
+                          Grade
+                            │
+                         bounded
+                          retry
+```
+
+This is one of the main differences between RAGFury and a basic:
+
+```text
+Retrieve → Generate
+```
+
+system.
+
+---
+
+# 🌐 8. External Knowledge Retrieval
+
+For questions that require general or external knowledge, the ReAct agent can use the Wikipedia tool.
+
+```text
+User Query
+    ↓
+ReAct Agent
+    ↓
 Wikipedia Tool
-      ↓
-External Knowledge
+    ↓
+Wikipedia API
+    ↓
+Retrieved Information
+    ↓
+LLM
+    ↓
+Final Answer
 ```
-
-The decision is made inside the agent workflow based on the user's question.
-
-### 🌐 External Knowledge Fallback
-
-When information is not expected to come from the private document corpus, the agent can use Wikipedia.
 
 Example:
 
@@ -153,17 +505,19 @@ Example:
 "What is quantum computing?"
 ```
 
-can use external knowledge, while:
-
 ```text
-"What is the company's leave policy?"
+"How does nuclear fusion work?"
 ```
 
-can use the private PDF knowledge base.
+These questions do not necessarily require the private PDF knowledge base.
 
-### 💬 Streamlit Interface
+---
 
-The Streamlit application provides:
+# 💬 9. Streamlit Interface
+
+RAGFury includes a Streamlit interface for interacting with the system.
+
+The interface provides:
 
 * Interactive question answering
 * AI-generated responses
@@ -171,26 +525,53 @@ The Streamlit application provides:
 * Search history
 * Response-time tracking
 
-### 📚 Source Inspection
+This makes the retrieval and agentic reasoning system accessible through a simple web interface.
 
-Retrieved document chunks can be inspected to understand which pieces of the private knowledge base contributed to the response.
+---
 
-### ⚡ Response-Time Tracking
+# 📚 10. Source Inspection
 
-The application records query processing time, providing basic visibility into retrieval and generation latency.
+For private-document questions, retrieved document chunks can be inspected.
 
-### 🧩 Modular Architecture
+This provides visibility into the information that was retrieved from the knowledge base.
 
-The implementation separates:
+Instead of only seeing:
 
-* Configuration
-* Document ingestion
-* Semantic chunking
-* Vector storage and retrieval
-* Agent state
-* ReAct tools
-* LangGraph orchestration
-* Streamlit UI
+```text
+Answer
+```
+
+the user can inspect:
+
+```text
+Answer
++
+Retrieved Context
+```
+
+This is useful for debugging retrieval quality and understanding why a response was generated.
+
+---
+
+# ⚡ 11. Response-Time Tracking
+
+The Streamlit application tracks query processing time.
+
+This provides basic visibility into:
+
+```text
+Query
+   ↓
+Agent
+   ↓
+Retrieval
+   ↓
+Generation
+   ↓
+Response Time
+```
+
+This is useful when experimenting with different retrieval and agent configurations.
 
 ---
 
@@ -203,7 +584,7 @@ The implementation separates:
                                      │
                                      ▼
                          ┌───────────────────────┐
-                         │    RAGFury Engine      │
+                         │     RAGFury Engine     │
                          └───────────┬───────────┘
                                      │
                                      ▼
@@ -212,69 +593,132 @@ The implementation separates:
                          │        Agent          │
                          └───────────┬───────────┘
                                      │
-                          ┌──────────┴──────────┐
-                          │                     │
-                          ▼                     ▼
-                 ┌─────────────────┐   ┌─────────────────┐
-                 │ Retriever Tool   │   │ Wikipedia Tool  │
-                 └────────┬────────┘   └────────┬────────┘
-                          │                     │
-                          ▼                     ▼
-                 ┌─────────────────┐   ┌─────────────────┐
-                 │ FAISS + BM25    │   │ Wikipedia API   │
-                 └────────┬────────┘   └─────────────────┘
-                          │
-                          ▼
-                 ┌─────────────────┐
-                 │   PDF Corpus    │
-                 │ Private KB      │
-                 └─────────────────┘
+                         ┌───────────┴───────────┐
+                         │                       │
+                         ▼                       ▼
+                ┌─────────────────┐     ┌─────────────────┐
+                │ Retriever Tool  │     │ Wikipedia Tool  │
+                └────────┬────────┘     └────────┬────────┘
+                         │                       │
+                         ▼                       ▼
+                ┌─────────────────┐       Wikipedia API
+                │ Hybrid Retrieval│
+                │ FAISS + BM25    │
+                └────────┬────────┘
+                         │
+                         ▼
+                ┌─────────────────┐
+                │ Document Grader │
+                └────────┬────────┘
+                         │
+                    ┌────┴────┐
+                    │         │
+                 Relevant   Irrelevant
+                    │         │
+                    ▼         ▼
+                Generate   Rewrite
+                              │
+                              ▼
+                           Retrieve
+                              │
+                              ▼
+                             Grade
 ```
 
 ---
 
-# 🔄 End-to-End RAG Pipeline
+# 🔄 End-to-End Pipeline
+
+## Phase 1 — Document Ingestion
 
 ```text
-PDF Documents
-      │
-      ▼
-PDF Loader
-      │
-      ▼
-Document Processing
-      │
-      ▼
+PDF
+ ↓
+Document Loader
+ ↓
+Document Objects
+```
+
+## Phase 2 — Semantic Processing
+
+```text
+Document
+ ↓
 Sentence Splitting
-      │
-      ▼
-Semantic Chunking
-      │
-      ▼
-Sentence-Transformer Embeddings
-      │
-      ▼
- ┌────┴────┐
- ▼         ▼
-FAISS     BM25
- │         │
- └────┬────┘
-      ▼
-Hybrid Retriever
-      │
-      ▼
-Retriever Tool
-      │
-      ▼
+ ↓
+Sentence Embeddings
+ ↓
+Cosine Similarity
+ ↓
+Threshold-Based Chunking
+ ↓
+Semantic Chunks
+```
+
+## Phase 3 — Indexing
+
+```text
+Semantic Chunks
+       │
+       ├──────────────► FAISS
+       │
+       └──────────────► BM25
+```
+
+## Phase 4 — Agentic Query Processing
+
+```text
+User Query
+    ↓
 LangGraph ReAct Agent
+    ↓
+Tool Selection
+```
+
+The agent chooses:
+
+```text
+Retriever Tool
+```
+
+or:
+
+```text
+Wikipedia Tool
+```
+
+## Phase 5 — Private RAG
+
+```text
+Retriever Tool
+      ↓
+FAISS + BM25
+      ↓
+Retrieved Documents
+      ↓
+Document Grader
       │
- ┌────┴──────────────┐
- ▼                   ▼
-Private KB       Wikipedia
- ▼                   ▼
- └────────┬──────────┘
-          ▼
-     Final Answer
+ ┌────┴─────┐
+ │          │
+Relevant  Irrelevant
+ │          │
+ ▼          ▼
+Generate  Rewrite
+             │
+             ▼
+          Retrieve
+```
+
+## Phase 6 — External Retrieval
+
+```text
+Wikipedia Tool
+      ↓
+Wikipedia API
+      ↓
+External Context
+      ↓
+Generate
 ```
 
 ---
@@ -288,14 +732,16 @@ User Query
     ↓
 Retriever
     ↓
-Retrieved Context
+Context
     ↓
 LLM
     ↓
 Answer
 ```
 
-The retrieval path is mostly predetermined.
+The retrieval path is predetermined.
+
+---
 
 ## RAGFury
 
@@ -304,20 +750,32 @@ User Query
     ↓
 ReAct Agent
     ↓
-Reasoning / Tool Selection
+Tool Selection
     │
-    ├──► Retriever Tool
-    │       ↓
-    │   Private PDFs
+    ├───────────────► Retriever Tool
+    │                       ↓
+    │                  Hybrid Retrieval
+    │                       ↓
+    │                  Document Grader
+    │                       ↓
+    │              ┌────────┴────────┐
+    │              │                 │
+    │          Relevant          Irrelevant
+    │              │                 │
+    │              ▼                 ▼
+    │           Generate          Rewrite
+    │                                │
+    │                                ▼
+    │                             Retrieve
     │
-    └──► Wikipedia Tool
-            ↓
-        External Knowledge
-    ↓
-Final Answer
+    └───────────────► Wikipedia Tool
+                            ↓
+                       Wikipedia
+                            ↓
+                         Generate
 ```
 
-The key difference is the **agentic tool-selection layer**.
+The important difference is that RAGFury has **decision-making at the knowledge-source level and corrective behavior inside the private RAG workflow**.
 
 ---
 
@@ -361,21 +819,25 @@ RAGFury-Agentic-Knowledge-Retrieval-Research-System/
 └── README.md
 ```
 
+The repository currently follows this modular organization, with separate modules for configuration, document ingestion, semantic chunking, vector storage, graph construction, nodes, and graph state.
+
 ---
 
 # 🧱 Core Components
 
-| Component               | Responsibility                                                  |
-| ----------------------- | --------------------------------------------------------------- |
-| `document_processor.py` | Loads and prepares source documents                             |
-| `semantic_chunker.py`   | Creates semantically coherent chunks using embedding similarity |
-| `vectorstore.py`        | Builds dense/sparse retrieval and combines FAISS + BM25         |
-| `reactnode.py`          | Defines the ReAct agent and retrieval/Wikipedia tools           |
-| `graph_builder.py`      | Builds the LangGraph workflow                                   |
-| `rag_state.py`          | Defines the state passed through the graph                      |
-| `config.py`             | Centralizes model and environment configuration                 |
-| `main.py`               | Runs the RAG pipeline                                           |
-| `streamlit_app.py`      | Provides the interactive UI                                     |
+| Component               | Responsibility                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------- |
+| `document_processor.py` | Loads and prepares PDF source documents                                                 |
+| `semantic_chunker.py`   | Creates semantically coherent chunks using sentence embeddings                          |
+| `vectorstore.py`        | Builds dense/sparse retrieval using FAISS and BM25                                      |
+| `reactnode.py`          | Defines the ReAct agent, retrieval tool, Wikipedia tool, and answer-generation behavior |
+| `graph_builder.py`      | Builds and compiles the LangGraph workflow                                              |
+| `rag_state.py`          | Defines the state passed through the LangGraph workflow                                 |
+| `config.py`             | Centralizes model and environment configuration                                         |
+| `main.py`               | Initializes and runs the application                                                    |
+| `streamlit_app.py`      | Provides the interactive Streamlit interface                                            |
+
+The current repository's `graph_builder.py` uses LangGraph `StateGraph` and the project state is passed through `RAGState`.
 
 ---
 
@@ -385,18 +847,19 @@ RAGFury-Agentic-Knowledge-Retrieval-Research-System/
 | ----------------------------- | ----------------------------------------- |
 | **Python**                    | Core application development              |
 | **LangChain**                 | LLM, retrieval, tools, and RAG components |
-| **LangGraph**                 | Agent workflow orchestration              |
-| **ReAct**                     | Reasoning and tool selection              |
+| **LangGraph**                 | Agent/workflow orchestration              |
+| **ReAct**                     | Agentic reasoning and tool selection      |
 | **Groq**                      | LLM inference                             |
 | **Llama 3.1 8B Instant**      | Generation model                          |
 | **Sentence Transformers**     | Sentence/document embeddings              |
 | **all-MiniLM-L6-v2**          | Embedding model                           |
-| **FAISS**                     | Dense vector similarity search            |
+| **FAISS**                     | Dense vector retrieval                    |
 | **BM25**                      | Sparse lexical retrieval                  |
-| **PyPDF / LangChain loaders** | PDF document ingestion                    |
+| **PyPDF / LangChain loaders** | PDF ingestion                             |
 | **Wikipedia API**             | External knowledge retrieval              |
 | **Streamlit**                 | Interactive web interface                 |
-| **Hugging Face**              | Transformer/embedding model ecosystem     |
+| **Hugging Face**              | Transformer/embedding ecosystem           |
+| **uv**                        | Python dependency/environment management  |
 | **Git & GitHub**              | Version control                           |
 
 ---
@@ -405,7 +868,13 @@ RAGFury-Agentic-Knowledge-Retrieval-Research-System/
 
 ## 1. Document Ingestion
 
-PDF files placed inside the `data/` directory are loaded and converted into LangChain document objects.
+PDF files placed inside:
+
+```text
+data/
+```
+
+are loaded and converted into document objects.
 
 ```text
 PDF
@@ -414,6 +883,8 @@ PDF Loader
  ↓
 Document Objects
 ```
+
+---
 
 ## 2. Semantic Chunking
 
@@ -426,12 +897,14 @@ Sentence Embeddings
  ↓
 Cosine Similarity
  ↓
-Threshold
+Similarity Threshold
  ↓
 Semantic Chunks
 ```
 
-Semantically related sentences are grouped together, while major semantic changes create new chunks.
+The semantic chunker groups sentences that are sufficiently related and creates new chunks when the semantic relationship changes.
+
+---
 
 ## 3. Embedding Generation
 
@@ -443,6 +916,8 @@ all-MiniLM-L6-v2
 Vector Representation
 ```
 
+---
+
 ## 4. Hybrid Indexing
 
 ```text
@@ -453,17 +928,28 @@ Chunks
   └──► BM25  → Sparse Keyword Search
 ```
 
-## 5. Query Processing
+The two retrieval approaches complement each other:
+
+```text
+FAISS → semantic similarity
+BM25  → lexical/exact-term matching
+```
+
+---
+
+## 5. Agentic Query Processing
 
 ```text
 User Query
     ↓
-LangGraph Workflow
-    ↓
-ReAct Agent
+LangGraph ReAct Agent
     ↓
 Tool Selection
 ```
+
+The agent selects the most appropriate available knowledge source.
+
+---
 
 ## 6. Private Knowledge Retrieval
 
@@ -474,15 +960,39 @@ Retriever Tool
  ↓
 FAISS + BM25
  ↓
-Relevant PDF Chunks
+Retrieved Documents
  ↓
-Agent
+Document Grader
 ```
+
+If relevant:
+
+```text
+Relevant
+   ↓
+Generate
+```
+
+If irrelevant:
+
+```text
+Irrelevant
+   ↓
+Rewrite Query
+   ↓
+Retrieve Again
+   ↓
+Grade Again
+```
+
+---
 
 ## 7. External Knowledge Retrieval
 
 ```text
 Query
+ ↓
+ReAct Agent
  ↓
 Wikipedia Tool
  ↓
@@ -490,12 +1000,14 @@ Wikipedia API
  ↓
 External Information
  ↓
-Agent
+Generate
 ```
 
-## 8. Response Generation
+---
 
-The retrieved information is incorporated into the agent's context and the LLM generates the final response.
+## 8. Final Answer
+
+After the selected workflow retrieves and validates the required information, the LLM generates the final response.
 
 ---
 
@@ -552,33 +1064,36 @@ GROQ_API_KEY=your_groq_api_key
 HF_TOKEN=your_huggingface_token
 ```
 
-> ⚠️ **Never commit `.env` files, API keys, tokens, or credentials to GitHub.**
+> ⚠️ Never commit `.env` files, API keys, tokens, or credentials to GitHub.
 
 ---
 
 # 📄 Add Your Documents
 
-Place your PDF files inside:
+Place PDF documents inside:
 
 ```text
 data/
 ```
 
-Example:
+For example:
 
 ```text
 data/
 ├── company_policy.pdf
 ├── employee_handbook.pdf
-├── technical_documentation.pdf
-└── security_policy.pdf
+└── technical_documentation.pdf
 ```
+
+The system builds its private knowledge base from these documents.
+
+> **Important:** A query should only be answered from the private knowledge base when the indexed documents actually contain relevant information. If a document does not contain information about a requested topic, the retrieval grader can identify the mismatch and trigger query rewriting rather than treating unrelated documents as valid evidence.
 
 ---
 
 # ▶️ Running the Application
 
-## Run the RAG Pipeline
+## Run the Application
 
 ```bash
 python main.py
@@ -590,7 +1105,7 @@ python main.py
 python -m streamlit run streamlit_app.py
 ```
 
-The application will be available at:
+The Streamlit application will be available at:
 
 ```text
 http://localhost:8501
@@ -600,7 +1115,7 @@ http://localhost:8501
 
 # 💡 Example Queries
 
-### 📚 Private Knowledge Base
+## 📚 Private Knowledge Base
 
 ```text
 What is the company's leave policy?
@@ -611,10 +1126,40 @@ What is the employee notice period?
 ```
 
 ```text
-What security requirements are mentioned in the document?
+What benefits are mentioned in the employee handbook?
 ```
 
-### 🌐 External Knowledge
+---
+
+## 🔍 Queries That Test Corrective Retrieval
+
+```text
+What is the company's security policy?
+```
+
+If the indexed documents do not contain a security policy, the system should not blindly treat unrelated policy documents as evidence.
+
+Instead:
+
+```text
+Query
+ ↓
+Retrieve
+ ↓
+Grade
+ ↓
+Irrelevant
+ ↓
+Rewrite
+ ↓
+Retrieve Again
+```
+
+This makes such queries useful for testing retrieval quality.
+
+---
+
+## 🌐 External Knowledge
 
 ```text
 What is quantum computing?
@@ -628,35 +1173,230 @@ How does nuclear fusion work?
 Who is Brad Pitt?
 ```
 
+These can be handled through the Wikipedia tool when the ReAct agent determines that external knowledge is appropriate.
+
 ---
 
 # 🧪 Engineering Concepts Demonstrated
 
+RAGFury demonstrates several practical AI engineering concepts:
+
+### Retrieval
+
 * Retrieval-Augmented Generation
-* Agentic RAG
-* ReAct agents
-* LangGraph orchestration
-* Tool calling
-* Semantic chunking
-* Sentence embeddings
 * Dense retrieval
 * Sparse retrieval
 * Hybrid search
-* FAISS vector search
-* BM25 retrieval
-* Document ingestion
-* PDF processing
+* FAISS
+* BM25
+
+### Document Processing
+
+* PDF ingestion
+* Sentence splitting
+* Semantic chunking
+* Sentence embeddings
+* Cosine similarity
+
+### Agentic AI
+
+* LangGraph
+* ReAct agents
+* Tool calling
+* Agentic tool selection
+* Multi-source knowledge retrieval
+
+### Retrieval Reliability
+
+* Document relevance grading
+* Corrective retrieval
+* Query rewriting
+* Bounded retrieval retries
+
+### LLM Engineering
+
 * LLM orchestration
-* External knowledge retrieval
+* Groq inference
+* Prompt-based generation
 * State management
-* Modular AI architecture
-* Streamlit application development
+
+### Application Development
+
+* Streamlit
+* Modular Python architecture
+* Configuration management
+* Response-time tracking
+* Source inspection
+
+---
+
+# 📊 Current Architecture vs Basic RAG
+
+| Capability                 |   Basic RAG | RAGFury |
+| -------------------------- | ----------: | ------: |
+| PDF ingestion              |           ✅ |       ✅ |
+| Semantic chunking          |   Sometimes |       ✅ |
+| Dense retrieval            |           ✅ |       ✅ |
+| Sparse retrieval           | Usually not |       ✅ |
+| Hybrid retrieval           | Usually not |       ✅ |
+| External knowledge         |           ❌ |       ✅ |
+| Agentic tool selection     |           ❌ |       ✅ |
+| Document relevance grading |           ❌ |       ✅ |
+| Query rewriting            |           ❌ |       ✅ |
+| Corrective retrieval       |           ❌ |       ✅ |
+| Streamlit UI               |    Optional |       ✅ |
+| Source inspection          |    Optional |       ✅ |
+| Response-time tracking     |    Optional |       ✅ |
+
+---
+
+# 🏆 What Makes RAGFury Different?
+
+RAGFury is more than:
+
+```text
+PDF
+ ↓
+Embeddings
+ ↓
+Vector Search
+ ↓
+LLM
+```
+
+It combines:
+
+```text
+Semantic Chunking
+       +
+Sentence Embeddings
+       +
+FAISS
+       +
+BM25
+       +
+Hybrid Retrieval
+       +
+ReAct Agent
+       +
+LangGraph
+       +
+Tool Calling
+       +
+Document Grading
+       +
+Query Rewriting
+       +
+Corrective Retrieval
+       +
+Wikipedia
+       +
+LLM Generation
+```
+
+The result is an **agentic knowledge-retrieval system that can select between private and external knowledge sources and recover from poor private-document retrieval through relevance grading and query rewriting.**
+
+---
+
+# 🔬 Retrieval Failure Handling
+
+One of the important design goals of RAGFury is to avoid this failure pattern:
+
+```text
+User Query
+    ↓
+Bad Retrieval
+    ↓
+Irrelevant Context
+    ↓
+LLM
+    ↓
+Confident but Unsupported Answer
+```
+
+Instead, the private RAG workflow attempts:
+
+```text
+User Query
+    ↓
+Retrieve
+    ↓
+Grade
+    ↓
+Relevant?
+   ┌┴───────────────┐
+   │                │
+  YES               NO
+   │                │
+   ▼                ▼
+Generate         Rewrite
+                    │
+                    ▼
+                 Retrieve
+                    │
+                    ▼
+                   Grade
+```
+
+This introduces an explicit **retrieval-quality checkpoint** before generation.
+
+---
+
+# 🧩 Design Philosophy
+
+RAGFury follows three important principles.
+
+### 1. Let the Agent Choose the Knowledge Source
+
+Instead of creating a large collection of hard-coded routing rules:
+
+```text
+if query_about_documents:
+    use_rag()
+
+elif general_question:
+    use_wikipedia()
+```
+
+the ReAct agent is given tools and decides which tool is appropriate.
+
+---
+
+### 2. Retrieval Is Not Automatically Correct
+
+A retriever returning documents does not mean that those documents answer the question.
+
+Therefore:
+
+```text
+Retrieved ≠ Relevant
+```
+
+RAGFury explicitly grades retrieved documents before relying on them.
+
+---
+
+### 3. Failed Retrieval Should Trigger Recovery
+
+When retrieval is poor:
+
+```text
+Bad Retrieval
+     ↓
+Query Rewrite
+     ↓
+Better Retrieval Attempt
+```
+
+rather than immediately generating an answer from weak context.
 
 ---
 
 # 📈 Future Improvements
 
-### 🔎 Advanced Retrieval
+The following features are **not presented as currently implemented** and can be added in future iterations.
+
+## 🔎 Advanced Retrieval
 
 * [ ] Cross-encoder reranking
 * [ ] Query expansion
@@ -665,24 +1405,24 @@ Who is Brad Pitt?
 * [ ] Reciprocal Rank Fusion
 * [ ] Retrieval confidence scoring
 
-### 🧠 Advanced Agentic RAG
+## 🧠 Advanced Agentic RAG
 
-* [ ] Query planning
-* [ ] Corrective RAG
-* [ ] Self-RAG
-* [ ] Adaptive RAG
-* [ ] Multi-step research agent
+* [ ] Multi-step research planning
+* [ ] Multi-agent research
+* [ ] Adaptive retrieval strategies
+* [ ] More sophisticated self-correction
+* [ ] Multiple external knowledge sources
 
-### 📊 Evaluation & Observability
+## 📊 Evaluation & Observability
 
 * [ ] RAGAS evaluation
 * [ ] DeepEval evaluation
 * [ ] LangSmith tracing
-* [ ] Retrieval metrics
+* [ ] Retrieval precision/recall evaluation
 * [ ] Answer faithfulness evaluation
-* [ ] Latency monitoring
+* [ ] Automated evaluation datasets
 
-### 💾 Application Features
+## 💾 Application Features
 
 * [ ] Conversation memory
 * [ ] Streaming responses
@@ -690,9 +1430,9 @@ Who is Brad Pitt?
 * [ ] User authentication
 * [ ] User-specific knowledge bases
 * [ ] Persistent chat history
-* [ ] Citation generation
+* [ ] Structured citations
 
-### 🚀 Productionization
+## 🚀 Productionization
 
 * [ ] FastAPI backend
 * [ ] Docker deployment
@@ -705,49 +1445,26 @@ Who is Brad Pitt?
 
 ---
 
-# 🏆 What Makes RAGFury Different?
-
-RAGFury is more than a basic:
-
-```text
-PDF → Embeddings → Vector Search → LLM
-```
-
-pipeline.
-
-It combines:
-
-```text
-Semantic Chunking
-       +
-Hybrid Retrieval
-       +
-FAISS
-       +
-BM25
-       +
-LangGraph
-       +
-ReAct Agents
-       +
-Tool Calling
-       +
-External Knowledge
-       +
-LLM Generation
-```
-
-This creates an **agentic knowledge-retrieval system capable of selecting between private document knowledge and external knowledge sources**.
-
----
-
 # 📌 Resume-Ready Description
 
-> **RAGFury — Agentic Knowledge Retrieval & Research System:** Built an Agentic RAG system using LangGraph and ReAct agents, combining threshold-based semantic chunking with hybrid FAISS + BM25 retrieval for private PDF knowledge bases and Wikipedia-based external knowledge retrieval. Integrated Groq/Llama 3.1 inference and Streamlit for interactive, source-aware question answering.
+> **RAGFury — Agentic Knowledge Retrieval & Research System:** Built an Agentic RAG system using LangGraph ReAct agents to dynamically select between private PDF retrieval and Wikipedia-based external knowledge. Implemented threshold-based semantic chunking with `all-MiniLM-L6-v2`, hybrid FAISS + BM25 retrieval, document relevance grading, query rewriting, and corrective retrieval to improve robustness against irrelevant retrieved context. Integrated Groq/Llama 3.1 inference and Streamlit for interactive question answering and retrieval inspection.
 
 ### Core Technologies
 
-`Python` `LangChain` `LangGraph` `ReAct` `FAISS` `BM25` `Sentence Transformers` `Groq` `Llama 3.1` `Wikipedia API` `Streamlit`
+```text
+Python
+LangChain
+LangGraph
+ReAct
+FAISS
+BM25
+Sentence Transformers
+all-MiniLM-L6-v2
+Groq
+Llama 3.1
+Wikipedia API
+Streamlit
+```
 
 ---
 
@@ -766,6 +1483,7 @@ Focused on:
 * 🛠️ ReAct Agents
 * 🔍 Hybrid Retrieval
 * 🧩 LLM Tool Calling
+* 📊 AI/RAG Evaluation
 
 ---
 
@@ -774,6 +1492,7 @@ Focused on:
 If you find RAGFury useful or interesting, consider giving the repository a ⭐ on GitHub.
 
 **Repository:**
+
 https://github.com/aviral-dot/RAGFury-Agentic-Knowledge-Retrieval-Research-System
 
 ---
@@ -781,5 +1500,6 @@ https://github.com/aviral-dot/RAGFury-Agentic-Knowledge-Retrieval-Research-Syste
 ## 📜 License
 
 This project is intended for educational and research purposes.
+
 
 
