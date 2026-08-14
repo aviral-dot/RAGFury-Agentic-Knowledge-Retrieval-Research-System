@@ -31,7 +31,8 @@ The initial retrieval did not return sufficiently relevant
 documents for the user's question.
 
 Rewrite the question so that it is clearer, more specific,
-and more suitable for semantic and keyword retrieval.
+and more suitable for semantic and keyword retrieval and use differt way to write so as to retrieve the documntes perfectly.
+
 
 Do not answer the question.
 

@@ -11,7 +11,7 @@ class RouteDecision(BaseModel):
     next_step: Literal["rag", "wikipedia"] = Field(
         description=(
             "The workflow that should handle the user's question. "
-            "Choose 'rag' for questions related to indexed documents "
+            "Choose 'rag' for questions related to indexed company documents "
             "and 'wikipedia' for general external knowledge."
         )
     )
@@ -22,7 +22,7 @@ class Agent:
     Routing agent responsible for selecting the next workflow.
 
     Available workflows:
-        - rag: document retrieval and RAG pipeline
+        - rag: comapny document retrieval and RAG pipeline
         - wikipedia: external Wikipedia knowledge
 
     The agent only makes the routing decision.
