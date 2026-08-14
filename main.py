@@ -115,9 +115,8 @@ def main():
     rag = AgenticRAG(directory=data_directory)
 
     example_questions = [
-        "What is the purpose of the company security policy?",
         "How much sick leave can an employee take?",
-        "What is Sample Company Remote Work Policy?"
+        "What is working hour of  Remote Work Policy?"
     ]
 
     print("=" * 80)
