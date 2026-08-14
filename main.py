@@ -1,8 +1,7 @@
-"""Main application entry point for Agentic RAG system"""
+"""Main application entry point for Agentic RAG system."""
 
 import sys
 from pathlib import Path
-
 
 sys.path.append(str(Path(__file__).parent))
 
@@ -13,45 +12,43 @@ from src.graph_builder.graph_builder import GraphBuilder
 
 
 class AgenticRAG:
-    """Main Agentic RAG application"""
+    """Main Agentic RAG application."""
 
     def __init__(self, directory=None):
-        """
-        Initialize Agentic RAG system
+        """Initialize the Agentic RAG system."""
 
-        Args:
-            directory: Directory containing PDF documents
-        """
         print("🚀 Initializing Agentic RAG System...")
 
-        
         self.directory = directory or Path("data")
 
-        
+        # Initialize LLM
         self.llm = Config.get_llm()
 
+        # Initialize document processor
         self.doc_processor = DocumentProcessor(
-          model_name="all-MiniLM-L6-v2",
-          threshold=0.3
+            model_name="all-MiniLM-L6-v2",
+            threshold=0.3
         )
 
+        # Initialize vector store
         self.vector_store = VectorStore()
 
-        
+        # Process documents and create vector store
         self._setup_vectorstore()
 
-        
+        # Initialize graph builder
         self.graph_builder = GraphBuilder(
             retriever=self.vector_store.get_retriever(),
             llm=self.llm
         )
 
-        self.graph_builder.build()
+        # Build and compile graph ONCE
+        self.graph = self.graph_builder.build()
 
         print("✅ System initialized successfully!\n")
 
     def _setup_vectorstore(self):
-        """Setup vector store with processed documents"""
+        """Setup vector store with processed documents."""
 
         print(f"📄 Processing documents from: {self.directory}")
 
@@ -65,26 +62,31 @@ class AgenticRAG:
 
     def ask(self, question: str) -> str:
         """
-        Ask a question to the RAG system
+        Ask a question to the Agentic RAG system.
 
         Args:
-            question: User question
+            question: User question.
 
         Returns:
-            Generated answer
+            Generated answer.
         """
+
         print(f"❓ Question: {question}\n")
         print("🤔 Processing...")
 
-        result = self.graph_builder.run(question)
-        answer = result["answer"]
+        # Invoke the already compiled graph
+        result = self.graph.invoke({
+            "question": question
+        })
+
+        answer = result.get("answer", "")
 
         print(f"✅ Answer: {answer}\n")
 
         return answer
 
     def interactive_mode(self):
-        """Run in interactive mode"""
+        """Run the system in interactive mode."""
 
         print("💬 Interactive Mode - Type 'quit' to exit\n")
 
@@ -101,26 +103,21 @@ class AgenticRAG:
 
 
 def main():
-    """Main function"""
+    """Main function."""
 
-    
     data_directory = Path("data")
 
-    pdf_files = [str(pdf) for pdf in data_directory.glob("*.pdf")]
-
-    
     if not data_directory.exists():
         print(f"❌ Data directory not found: {data_directory}")
         return
 
-    
-    rag = AgenticRAG(directory=pdf_files)
+    # Pass the directory itself, not a list of PDF paths
+    rag = AgenticRAG(directory=data_directory)
 
-    
     example_questions = [
         "What is the purpose of the company security policy?",
-        "What are the main rules for remote work?",
-        "What is Sample Company Remote Work Policy"
+        "How much sick leave can an employee take?",
+        "What is Sample Company Remote Work Policy?"
     ]
 
     print("=" * 80)
@@ -131,12 +128,11 @@ def main():
         rag.ask(question)
         print("=" * 80 + "\n")
 
-    
     print("\n" + "=" * 80)
 
     user_input = input(
         "Would you like to enter interactive mode? (y/n): "
-    )
+    ).strip()
 
     if user_input.lower() == "y":
         rag.interactive_mode()
