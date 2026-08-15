@@ -21,10 +21,10 @@ class AgenticRAG:
 
         self.directory = directory or Path("data")
 
-        # Initialize LLM
+        
         self.llm = Config.get_llm()
 
-        # Initialize document processor
+        
         self.doc_processor = DocumentProcessor(
             model_name="all-MiniLM-L6-v2",
             threshold=0.3
@@ -74,7 +74,7 @@ class AgenticRAG:
         print(f"❓ Question: {question}\n")
         print("🤔 Processing...")
 
-        # Invoke the already compiled graph
+        
         result = self.graph.invoke({
             "question": question
         })
@@ -111,7 +111,7 @@ def main():
         print(f"❌ Data directory not found: {data_directory}")
         return
 
-    # Pass the directory itself, not a list of PDF paths
+    
     rag = AgenticRAG(directory=data_directory)
 
     example_questions = [
