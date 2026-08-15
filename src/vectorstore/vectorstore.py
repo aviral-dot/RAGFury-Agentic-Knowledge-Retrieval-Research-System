@@ -1,12 +1,11 @@
-
 """Hybrid vector store module for dense + sparse document retrieval."""
 
 from typing import List
 
-from langchain_community.vectorstores import FAISS
 from langchain_community.retrievers import BM25Retriever
 from langchain.retrievers import EnsembleRetriever
 from langchain.schema import Document
+from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
 
@@ -16,19 +15,18 @@ class VectorStore:
     def __init__(self):
         """Initialize dense and sparse retrievers."""
 
-        
         self.embedding = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
 
-        self.vectorstore = None
+        self.vectorstore: Chroma | None = None
         self.dense_retriever = None
         self.sparse_retriever = None
         self.hybrid_retriever = None
 
     def create_vectorstore(self, documents: List[Document]):
         """
-        Create dense FAISS and sparse BM25 retrievers,
+        Create dense Chroma and sparse BM25 retrievers,
         then combine them into a hybrid retriever.
 
         Args:
@@ -38,32 +36,33 @@ class VectorStore:
         if not documents:
             raise ValueError("Documents list cannot be empty.")
 
-      
-
-        self.vectorstore = FAISS.from_documents(
-            documents,
-            self.embedding
+        # Dense vector store
+        self.vectorstore = Chroma.from_documents(
+            documents=documents,
+            embedding=self.embedding,
+            collection_name="ragfury_documents",
+            persist_directory="./chroma_db",
         )
 
+        # Dense retriever
         self.dense_retriever = self.vectorstore.as_retriever(
             search_kwargs={"k": 4}
         )
 
-       
-
+        # Sparse retriever
         self.sparse_retriever = BM25Retriever.from_documents(
             documents
         )
 
         self.sparse_retriever.k = 4
 
-
+        # Hybrid retriever
         self.hybrid_retriever = EnsembleRetriever(
             retrievers=[
                 self.dense_retriever,
-                self.sparse_retriever
+                self.sparse_retriever,
             ],
-            weights=[0.7, 0.3]
+            weights=[0.7, 0.3],
         )
 
     def get_retriever(self):
@@ -85,7 +84,7 @@ class VectorStore:
     def retrieve(
         self,
         query: str,
-        k: int = 4
+        k: int = 4,
     ) -> List[Document]:
         """
         Retrieve relevant documents using hybrid search.
@@ -104,7 +103,6 @@ class VectorStore:
                 "Call create_vectorstore first."
             )
 
-        
         documents = self.hybrid_retriever.invoke(query)
 
         return documents[:k]
