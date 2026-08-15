@@ -17,6 +17,7 @@ dependencies = [
     "streamlit>=1.48.1",
     "wikipedia>=1.4.0",
     "langchain-groq",
-"langchain-huggingface",
-"sentence-transformers",
+    "langchain-huggingface",
+    "sentence-transformers",
+    "redis>=8.1.0",
 ]

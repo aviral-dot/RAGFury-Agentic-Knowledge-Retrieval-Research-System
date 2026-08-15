@@ -11,3 +11,4 @@ wikipedia
 langchain-groq
 langchain-huggingface
 sentence-transformers
+redis
