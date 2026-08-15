@@ -12,3 +12,5 @@ langchain-groq
 langchain-huggingface
 sentence-transformers
 redis
+chromadb
+langchain-chroma
