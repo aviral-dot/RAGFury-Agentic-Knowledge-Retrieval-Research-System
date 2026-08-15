@@ -18,8 +18,7 @@ def route_after_agent(state: RAGState) -> str:
     if not messages:
         return "end"
 
-    # The last message should normally be the AI message
-    # containing the tool call.
+   
     last_message = messages[-1]
 
     tool_calls = getattr(last_message, "tool_calls", None)
@@ -27,7 +26,7 @@ def route_after_agent(state: RAGState) -> str:
     if not tool_calls:
         return "end"
 
-    # We expect the ReAct agent to select one tool.
+  
     tool_call = tool_calls[0]
 
     tool_name = tool_call.get("name")

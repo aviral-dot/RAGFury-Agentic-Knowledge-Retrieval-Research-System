@@ -73,7 +73,7 @@ class DocumentProcessor:
 
         docs: List[Document] = []
 
-        # URL
+        
         if isinstance(source, str) and (
             source.startswith("http://")
             or source.startswith("https://")
@@ -83,17 +83,17 @@ class DocumentProcessor:
 
         path = Path(source)
 
-        # Directory containing PDFs
+        
         if path.is_dir():
             docs.extend(self.load_from_pdf_dir(path))
             return docs
 
-        # Single PDF
+       
         if path.suffix.lower() == ".pdf":
             docs.extend(self.load_from_pdf(path))
             return docs
 
-        # TXT file
+        
         if path.suffix.lower() == ".txt":
             docs.extend(self.load_from_txt(path))
             return docs

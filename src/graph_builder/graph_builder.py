@@ -54,17 +54,12 @@ class GraphBuilder:
         self.retriever = retriever
         self.llm = llm
 
-        # =====================================================
-        # INITIALIZE ROUTING AGENT
-        # =====================================================
 
         self.agent = Agent(
             llm=self.llm
         )
 
-        # =====================================================
-        # INITIALIZE WORKFLOW NODES
-        # =====================================================
+        
 
         self.retrieval_nodes = RAGNodes(
             retriever=self.retriever,
@@ -91,9 +86,6 @@ class GraphBuilder:
             llm=self.llm
         )
 
-    # =========================================================
-    # NODE WRAPPERS
-    # =========================================================
 
     def agent_node(self, state: RAGState):
         """
@@ -182,9 +174,7 @@ class GraphBuilder:
             state
         )
 
-    # =========================================================
-    # CONDITIONAL ROUTING
-    # =========================================================
+   
 
     @staticmethod
     def route_after_agent(state: RAGState):
@@ -257,9 +247,7 @@ class GraphBuilder:
 
         return "retry"
 
-    # =========================================================
-    # BUILD GRAPH
-    # =========================================================
+   
 
     def build(self):
         """
@@ -273,9 +261,7 @@ class GraphBuilder:
             RAGState
         )
 
-        # =====================================================
-        # ADD NODES
-        # =====================================================
+      
 
         workflow.add_node(
             "agent",
@@ -312,17 +298,13 @@ class GraphBuilder:
             self.reflection_node
         )
 
-        # =====================================================
-        # START → AGENT
-        # =====================================================
+        
 
         workflow.set_entry_point(
             "agent"
         )
 
-        # =====================================================
-        # AGENT → RAG / WIKIPEDIA
-        # =====================================================
+        
 
         workflow.add_conditional_edges(
             "agent",
@@ -333,20 +315,14 @@ class GraphBuilder:
             },
         )
 
-        # =====================================================
-        # RAG WORKFLOW
-        #
-        # retrieve → grade
-        # =====================================================
+      
 
         workflow.add_edge(
             "retrieve",
             "grade"
         )
 
-        # =====================================================
-        # GRADE → GENERATE / REWRITE
-        # =====================================================
+       
 
         workflow.add_conditional_edges(
             "grade",
@@ -357,36 +333,28 @@ class GraphBuilder:
             },
         )
 
-        # =====================================================
-        # REWRITE → RETRIEVE
-        # =====================================================
+       
 
         workflow.add_edge(
             "rewrite",
             "retrieve"
         )
 
-        # =====================================================
-        # GENERATE → END
-        # =====================================================
+       
 
         workflow.add_edge(
             "generate",
             END
         )
 
-        # =====================================================
-        # WIKIPEDIA → REFLECTION
-        # =====================================================
+       
 
         workflow.add_edge(
             "wikipedia",
             "reflect"
         )
 
-        # =====================================================
-        # REFLECTION → END / RETRY
-        # =====================================================
+      
 
         workflow.add_conditional_edges(
             "reflect",
@@ -397,8 +365,6 @@ class GraphBuilder:
             },
         )
 
-        # =====================================================
-        # COMPILE
-        # =====================================================
+       
 
         return workflow.compile()

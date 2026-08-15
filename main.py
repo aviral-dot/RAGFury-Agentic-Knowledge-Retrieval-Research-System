@@ -30,19 +30,19 @@ class AgenticRAG:
             threshold=0.3
         )
 
-        # Initialize vector store
+        
         self.vector_store = VectorStore()
 
-        # Process documents and create vector store
+        
         self._setup_vectorstore()
 
-        # Initialize graph builder
+        
         self.graph_builder = GraphBuilder(
             retriever=self.vector_store.get_retriever(),
             llm=self.llm
         )
 
-        # Build and compile graph ONCE
+        
         self.graph = self.graph_builder.build()
 
         print("✅ System initialized successfully!\n")
