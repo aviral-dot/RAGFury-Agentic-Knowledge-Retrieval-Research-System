@@ -10,7 +10,6 @@ class RAGState(TypedDict, total=False):
     messages: List[BaseMessage]
 
     question: str
-    rewritten_question: str
 
     next_step: str
 

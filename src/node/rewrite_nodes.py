@@ -50,5 +50,5 @@ Return only the improved search query.
         print(f"Rewritten query: {rewritten_question}")
 
         return {
-            "rewritten_question": rewritten_question,
+            "question": rewritten_question,
         }
