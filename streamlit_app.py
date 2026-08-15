@@ -1,28 +1,25 @@
-"""Streamlit UI for Agentic RAG System."""
+"""Streamlit frontend for RAGFury."""
 
-import streamlit as st
-from pathlib import Path
-import sys
 import time
 
+import requests
+import streamlit as st
 
 
-sys.path.append(str(Path(__file__).parent))
 
 
-from src.config.config import Config
-from src.document_ingestion.document_processor import DocumentProcessor
-from src.vectorstore.vectorstore import VectorStore
-from src.graph_builder.graph_builder import GraphBuilder
+API_URL = "http://127.0.0.1:8000"
 
 
 
 
 st.set_page_config(
-    page_title="🤖 RAGFury",
+    page_title="RAGFury",
     page_icon="🔍",
-    layout="centered"
+    layout="centered",
 )
+
+
 
 
 st.markdown(
@@ -34,28 +31,20 @@ st.markdown(
         font-weight: bold;
     }
 
-    .route-box {
-        padding: 12px;
-        border-radius: 8px;
-        margin-top: 10px;
+    .answer-box {
+        padding: 1rem;
+        border-radius: 10px;
     }
 
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
-
 
 
 
 def init_session_state():
     """Initialize Streamlit session state."""
-
-    if "rag_system" not in st.session_state:
-        st.session_state.rag_system = None
-
-    if "initialized" not in st.session_state:
-        st.session_state.initialized = False
 
     if "history" not in st.session_state:
         st.session_state.history = []
@@ -63,106 +52,45 @@ def init_session_state():
 
 
 
-@st.cache_resource
-def initialize_rag(data_directory: str):
-    """
-    Initialize the Agentic RAG system.
-
-    This follows the same initialization flow as main.py.
-    """
+def check_api_health():
+    """Check whether the FastAPI backend is available."""
 
     try:
-        print("🚀 Initializing Agentic RAG System...")
-
-       
-
-        llm = Config.get_llm()
-
-        
-
-        doc_processor = DocumentProcessor(
-            model_name="all-MiniLM-L6-v2",
-            threshold=0.3
+        response = requests.get(
+            f"{API_URL}/health",
+            timeout=5,
         )
 
-        
+        if response.status_code == 200:
+            return True
 
-        vector_store = VectorStore()
+        return False
 
-        
-
-        print(
-            f"📄 Processing documents from: {data_directory}"
-        )
-
-        documents = doc_processor.process_pdfs(
-            Path(data_directory)
-        )
-
-        print(
-            f"📊 Created {len(documents)} document chunks"
-        )
-
-        
-
-        print("🔍 Creating vector store...")
-
-        vector_store.create_vectorstore(documents)
-
-        
-
-        graph_builder = GraphBuilder(
-            retriever=vector_store.get_retriever(),
-            llm=llm
-        )
-
-        graph = graph_builder.build()
-
-        print(
-            "✅ Agentic RAG system initialized successfully!"
-        )
-
-        return graph, len(documents)
-
-    except Exception as e:
-
-        st.error(
-            f"❌ Failed to initialize RAG system: {str(e)}"
-        )
-
-        return None, 0
+    except requests.RequestException:
+        return False
 
 
+def ask_backend(question: str):
+    """Send a question to the FastAPI backend."""
 
-
-def ask_question(question: str):
-    """
-    Send a question to the LangGraph workflow.
-
-    The routing agent decides whether the question
-    should use company documents or external knowledge.
-    """
-
-    if st.session_state.rag_system is None:
-        return None
-
-    result = st.session_state.rag_system.invoke(
-        {
-            "question": question
-        }
+    response = requests.post(
+        f"{API_URL}/api/v1/query",
+        json={
+            "question": question,
+        },
+        timeout=120,
     )
 
-    return result
+    response.raise_for_status()
+
+    return response.json()
 
 
 
-
-def display_route(result):
+def display_route(route: str):
     """Display the route selected by the agent."""
 
-    next_step = result.get("next_step")
-
-    if next_step == "rag":
+    if route == "rag":
 
         st.info(
             "📄 **Source: Company Documents**\n\n"
@@ -170,103 +98,96 @@ def display_route(result):
             "company document RAG pipeline."
         )
 
-    elif next_step == "wikipedia":
+    elif route == "wikipedia":
 
         st.info(
             "🌐 **Source: External Knowledge**\n\n"
-            "The agent routed your question to the "
-            "Wikipedia knowledge source."
+            "The agent routed your question to "
+            "external knowledge."
         )
 
-    elif next_step:
+    elif route:
 
         st.info(
-            f"🤖 **Agent Route:** `{next_step}`"
+            f"🤖 **Agent Route:** `{route}`"
         )
 
 
+def display_history():
+    """Display recent searches."""
 
-
-def display_documents(result):
-    """Display retrieved company documents if available."""
-
-    documents = result.get("documents")
-
-    if documents is None:
-        documents = result.get("retrieved_docs")
-
-    if not documents:
+    if not st.session_state.history:
         return
 
-    with st.expander("📄 Retrieved Company Documents"):
+    st.markdown("---")
 
-        for i, doc in enumerate(documents, 1):
+    st.markdown("### 📜 Recent Searches")
+
+    for item in reversed(
+        st.session_state.history[-5:]
+    ):
+
+        with st.container():
 
             st.markdown(
-                f"### Document {i}"
+                f"**Q:** {item['question']}"
             )
 
-            if hasattr(doc, "page_content"):
+            answer_preview = item["answer"]
 
-                st.text(
-                    doc.page_content
+            if len(answer_preview) > 200:
+                answer_preview = (
+                    answer_preview[:200]
+                    + "..."
+                )
+
+            st.markdown(
+                f"**A:** {answer_preview}"
+            )
+
+            route = item.get(
+                "route",
+                "unknown",
+            )
+
+            if route == "rag":
+
+                st.caption(
+                    "📄 Source: Company Documents"
+                )
+
+            elif route == "wikipedia":
+
+                st.caption(
+                    "🌐 Source: External Knowledge"
                 )
 
             else:
 
-                st.text(
-                    str(doc)
+                st.caption(
+                    f"🤖 Route: {route}"
                 )
 
-            st.markdown("---")
-
-
-
-
-def display_workflow(result):
-    """Display agent workflow information."""
-
-    with st.expander("🔎 Workflow Details"):
-
-        next_step = result.get("next_step")
-
-        if next_step == "rag":
-
-            st.write(
-                "📄 **Selected Route:** Company Document RAG"
-            )
-
-        elif next_step == "wikipedia":
-
-            st.write(
-                "🌐 **Selected Route:** External Knowledge"
-            )
-
-        elif next_step:
-
-            st.write(
-                f"🤖 **Selected Route:** `{next_step}`"
-            )
-
-        if "question" in result:
-
-            st.write(
-                f"**Processed Question:** "
-                f"`{result['question']}`"
+            st.caption(
+                f"⏱️ Response time: "
+                f"{item['time']:.2f}s"
             )
 
 
 
 
 def main():
-    """Main Streamlit application."""
+    """Run the Streamlit application."""
 
     init_session_state()
 
-   
 
     st.title(
-        "🔍 RAGFury — Agentic Knowledge Retrieval"
+        "🔍 RAGFury"
+    )
+
+    st.subheader(
+        "Agentic Knowledge Retrieval & Research System"
     )
 
     st.markdown(
@@ -274,71 +195,44 @@ def main():
         Ask questions about your **company documents**
         or **external knowledge**.
 
-        🤖 The agent automatically decides whether to use
-        your private company documents or external knowledge.
+        🤖 The agent automatically decides which knowledge
+        source should be used.
         """
     )
 
    
-    data_directory = Path("data")
 
-    if not data_directory.exists():
+    if check_api_health():
+
+        st.success(
+            "🟢 RAGFury API is online"
+        )
+
+    else:
 
         st.error(
-            f"❌ Data directory not found: `{data_directory}`"
+            "🔴 RAGFury API is offline"
         )
 
         st.info(
-            "Please create a `data` directory and place your "
-            "company PDF documents inside it."
+            "Start the FastAPI backend with:\n\n"
+            "`uvicorn src.api.main:app`"
         )
 
         return
 
    
 
-    if not st.session_state.initialized:
-
-        with st.spinner(
-            "🚀 Initializing Agentic RAG system..."
-        ):
-
-            rag_system, num_chunks = initialize_rag(
-                str(data_directory)
-            )
-
-            if rag_system is not None:
-
-                st.session_state.rag_system = rag_system
-                st.session_state.initialized = True
-
-                st.success(
-                    f"✅ System ready! "
-                    f"{num_chunks} document chunks loaded."
-                )
-
-            else:
-
-                st.error(
-                    "❌ RAG system initialization failed."
-                )
-
-                return
-
-   
-
     st.markdown("---")
-
-    
 
     with st.form("search_form"):
 
         question = st.text_input(
-            "Enter your question:",
+            "Ask RAGFury",
             placeholder=(
-                "e.g. How much sick leave can an employee take? "
-                "or Who is the president of India?"
-            )
+                "e.g. How much sick leave can "
+                "an employee take?"
+            ),
         )
 
         submit = st.form_submit_button(
@@ -347,41 +241,41 @@ def main():
 
     
 
-    if submit and question.strip():
+    if submit:
 
         question = question.strip()
 
-        if st.session_state.rag_system is None:
+        if not question:
 
-            st.error(
-                "❌ RAG system is not initialized."
+            st.warning(
+                "Please enter a question."
             )
 
             return
+
+        start_time = time.time()
 
         with st.spinner(
             "🤔 Agent is processing your question..."
         ):
 
-            start_time = time.time()
-
             try:
 
-
-                result = ask_question(question)
-
-                elapsed_time = (
-                    time.time() - start_time
+                result = ask_backend(
+                    question
                 )
 
-                
+                elapsed_time = (
+                    time.time()
+                    - start_time
+                )
 
                 answer = result.get(
                     "answer",
-                    "No answer generated."
+                    "No answer generated.",
                 )
 
-              
+                
 
                 st.session_state.history.append(
                     {
@@ -390,112 +284,64 @@ def main():
                         "time": elapsed_time,
                         "route": result.get(
                             "next_step",
-                            "unknown"
-                        )
+                            "unknown",
+                        ),
                     }
                 )
 
                
 
-                display_route(result)
-
-               
                 st.markdown(
                     "### 💡 Answer"
                 )
 
-                st.success(answer)
-
-               
+                st.success(
+                    answer
+                )
 
                 st.caption(
                     f"⏱️ Response time: "
                     f"{elapsed_time:.2f} seconds"
                 )
 
-               
-
-                display_workflow(result)
-
-                
-
-                display_documents(result)
-
-            except Exception as e:
+            except requests.exceptions.Timeout:
 
                 st.error(
-                    f"❌ Error while processing "
-                    f"question: {str(e)}"
+                    "⏱️ Request timed out. "
+                    "The RAG pipeline took too long."
                 )
 
-   
+            except requests.exceptions.ConnectionError:
 
-    if st.session_state.history:
-
-        st.markdown("---")
-
-        st.markdown(
-            "### 📜 Recent Searches"
-        )
-
-        for item in reversed(
-            st.session_state.history[-3:]
-        ):
-
-            with st.container():
-
-              
-
-                st.markdown(
-                    f"**Q:** {item['question']}"
+                st.error(
+                    "🔴 Could not connect to "
+                    "the FastAPI backend."
                 )
 
-                
+            except requests.exceptions.HTTPError as exc:
 
-                answer_preview = item["answer"]
+                st.error(
+                    f"❌ API error: {exc}"
+                )
 
-                if len(answer_preview) > 200:
+                try:
 
-                    answer_preview = (
-                        answer_preview[:200]
-                        + "..."
+                    st.json(
+                        exc.response.json()
                     )
 
-                st.markdown(
-                    f"**A:** {answer_preview}"
+                except Exception:
+                    pass
+
+            except Exception as exc:
+
+                st.error(
+                    f"❌ Unexpected error: {exc}"
                 )
 
-                
+    
 
-                route = item.get(
-                    "route",
-                    "unknown"
-                )
-
-                if route == "rag":
-
-                    st.caption(
-                        "📄 Source: Company Documents"
-                    )
-
-                elif route == "wikipedia":
-
-                    st.caption(
-                        "🌐 Source: External Knowledge"
-                    )
-
-                else:
-
-                    st.caption(
-                        f"🤖 Route: {route}"
-                    )
-
-               
-
-                st.caption(
-                    f"⏱️ Response time: "
-                    f"{item['time']:.2f}s"
-                )
+    display_history()
 
 
 

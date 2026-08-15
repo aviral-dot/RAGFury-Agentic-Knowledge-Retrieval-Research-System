@@ -20,4 +20,9 @@ dependencies = [
     "langchain-huggingface",
     "sentence-transformers",
     "redis>=8.1.0",
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.3",
+    "jsonpatch>=1.33",
+    "langchain-chroma>=0.2.6",
+    "rank-bm25>=0.2.2",
 ]
