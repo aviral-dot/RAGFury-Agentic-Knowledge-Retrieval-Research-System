@@ -63,7 +63,8 @@ class GraphBuilder:
 
         self.retrieval_nodes = RAGNodes(
             retriever=self.retriever,
-            llm=self.llm
+            llm=self.llm,
+            
         )
 
         self.grading_nodes = GradingNodes(
@@ -75,7 +76,7 @@ class GraphBuilder:
         )
 
         self.generation_nodes = GenerationNodes(
-            llm=self.llm
+            llm=self.llm,
         )
 
         self.wikipedia_nodes = WikipediaNodes(

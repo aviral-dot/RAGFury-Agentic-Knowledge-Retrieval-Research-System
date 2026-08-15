@@ -123,3 +123,5 @@ class DocumentProcessor:
         docs = self.load_documents(directory)
 
         return self.split_documents(docs)
+
+

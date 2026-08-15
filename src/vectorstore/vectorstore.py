@@ -106,3 +106,4 @@ class VectorStore:
         documents = self.hybrid_retriever.invoke(query)
 
         return documents[:k]
+

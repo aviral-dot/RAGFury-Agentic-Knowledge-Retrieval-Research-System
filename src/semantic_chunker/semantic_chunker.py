@@ -32,3 +32,4 @@ class ThresholdSematicChunker:
                 result.append(Document(page_content=chunk, metadata=doc.metadata))
 
         return result
+
