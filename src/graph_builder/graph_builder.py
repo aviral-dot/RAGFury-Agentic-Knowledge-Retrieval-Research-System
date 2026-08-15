@@ -77,6 +77,7 @@ class GraphBuilder:
 
         self.generation_nodes = GenerationNodes(
             llm=self.llm,
+            
         )
 
         self.wikipedia_nodes = WikipediaNodes(
