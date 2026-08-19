@@ -99,6 +99,13 @@ Relevant long-term memories:
 
         answer = response.content
 
+
+        self.memory_manager.redis.add_turn(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            user_message=question,
+            assistant_message=answer,
+        )
         
         memory_queue.enqueue(
             save_memory_turn,
