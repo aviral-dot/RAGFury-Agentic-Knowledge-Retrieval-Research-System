@@ -41,12 +41,6 @@ class MemoryManager:
         user_message: str,
         assistant_message: str,
     ):
-        self.redis.add_turn(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            user_message=user_message,
-            assistant_message=assistant_message,
-        )
 
         self.mem0.add(
             user_id=user_id,
