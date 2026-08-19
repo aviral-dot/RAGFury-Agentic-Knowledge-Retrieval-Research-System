@@ -56,37 +56,46 @@ class GraphBuilder:
         self.llm = llm
 
         
-
+        print("1️⃣ Creating Agent...")
         self.agent = Agent(
-            llm=self.llm
+        llm=self.llm
         )
+        print("✅ Agent created")
 
-        
-
+        print("2️⃣ Creating RAGNodes...")
         self.retrieval_nodes = RAGNodes(
-            retriever=self.retriever,
-            llm=self.llm,
+        retriever=self.retriever,
+        llm=self.llm,
         )
+        print("✅ RAGNodes created")
 
-        self.grading_nodes = GradingNodes(
-            llm=self.llm
-        )
-
-        self.rewrite_nodes = RewriteNodes(
-            llm=self.llm
-        )
-
-        self.generation_nodes = GenerationNodes(
-            llm=self.llm,
-        )
-
+        print("3️⃣ Creating GradingNodes...")
         
-        self.chat_node_instance = ChatNode(
-            llm=self.llm
+        self.grading_nodes = GradingNodes(
+           llm=self.llm
         )
+        print("✅ GradingNodes created")
+
+        print("4️⃣ Creating RewriteNodes...")
+        self.rewrite_nodes = RewriteNodes(
+          llm=self.llm
+        )
+        print("✅ RewriteNodes created")
+
+        print("5️⃣ Creating GenerationNodes...")
+        self.generation_nodes = GenerationNodes(
+         llm=self.llm,
+        )
+        print("✅ GenerationNodes created")
+
+        print("6️⃣ Creating ChatNode...")
+        self.chat_node_instance = ChatNode(
+           llm=self.llm
+        )
+        print("✅ ChatNode created")
 
     
-
+       
     def agent_node(self, state: RAGState):
      """
      Run the routing agent while preserving the complete

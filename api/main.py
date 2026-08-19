@@ -1,5 +1,6 @@
 """FastAPI backend for RAGFury."""
 
+import json
 import time
 import traceback
 import uuid
@@ -30,6 +31,7 @@ from api.schemas import (
 # RAG SERVICE
 # =============================================================
 
+
 class RAGService:
     """
     Application service responsible for initializing
@@ -52,16 +54,199 @@ class RAGService:
         self.num_chunks = 0
         self.initialized = False
 
+        # -----------------------------------------------------
+        # Registry of PDFs that have already been processed
+        # -----------------------------------------------------
+
+        self.processed_files_path = Path(
+            "storage/processed_files.json"
+        )
+
+        self.processed_files_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        self.processed_files = set()
+
+    # =========================================================
+    # PROCESSED FILE REGISTRY
+    # =========================================================
+
+    def _load_processed_files(self) -> set[str]:
+        """Load names of PDFs that have already been indexed."""
+
+        if not self.processed_files_path.exists():
+            return set()
+
+        try:
+
+            with open(
+                self.processed_files_path,
+                "r",
+                encoding="utf-8",
+            ) as file:
+
+                data = json.load(file)
+
+            return set(data)
+
+        except (
+            json.JSONDecodeError,
+            OSError,
+        ) as exc:
+
+            raise RuntimeError(
+                "Could not load processed file registry."
+            ) from exc
+
+    def _save_processed_files(self) -> None:
+        """Save processed PDF filenames."""
+
+        with open(
+            self.processed_files_path,
+            "w",
+            encoding="utf-8",
+        ) as file:
+
+            json.dump(
+                sorted(
+                    self.processed_files
+                ),
+                file,
+                indent=2,
+            )
+
+    # =========================================================
+    # FIND NEW PDF FILES
+    # =========================================================
+
+    def _get_new_pdf_files(self) -> List[Path]:
+        """
+        Return only PDF files that have never been processed.
+        """
+
+        pdf_files = sorted(
+            self.data_directory.glob("*.pdf")
+        )
+
+        new_files = [
+            file
+            for file in pdf_files
+            if file.name
+            not in self.processed_files
+        ]
+
+        return new_files
+
+    # =========================================================
+    # INCREMENTAL INGESTION
+    # =========================================================
+
+    def _sync_documents(self) -> None:
+        """
+        Detect and process only newly added PDFs.
+        """
+
+        print(
+            "🔎 Checking for new PDF documents..."
+        )
+
+        # -----------------------------------------------------
+        # Load registry
+        # -----------------------------------------------------
+
+        self.processed_files = (
+            self._load_processed_files()
+        )
+
+        # -----------------------------------------------------
+        # Find new PDFs
+        # -----------------------------------------------------
+
+        new_files = (
+            self._get_new_pdf_files()
+        )
+
+        if not new_files:
+
+            print(
+                "✅ No new PDFs found. "
+                "Skipping document processing."
+            )
+
+            # Load existing persistent vector store
+            self.vector_store.initialize()
+
+            return
+
+        print(
+            f"📚 Found {len(new_files)} new PDF(s)."
+        )
+
+        all_new_chunks = []
+
+        # -----------------------------------------------------
+        # Process ONLY new PDFs
+        # -----------------------------------------------------
+
+        for pdf_file in new_files:
+
+            print(
+                f"\n📄 New document detected: "
+                f"{pdf_file.name}"
+            )
+
+            chunks = (
+                self.doc_processor.process_pdf(
+                    pdf_file
+                )
+            )
+
+            all_new_chunks.extend(
+                chunks
+            )
+
+        # -----------------------------------------------------
+        # Add ONLY new chunks to vector store
+        # -----------------------------------------------------
+
+        print(
+            f"\n🗂️ Adding "
+            f"{len(all_new_chunks)} new chunks "
+            f"to vector store..."
+        )
+
+        self.vector_store.initialize(
+            new_documents=all_new_chunks
+        )
+
+        # -----------------------------------------------------
+        # Mark files as processed
+        # -----------------------------------------------------
+
+        for pdf_file in new_files:
+
+            self.processed_files.add(
+                pdf_file.name
+            )
+
+        self._save_processed_files()
+
+        print(
+            "\n✅ Incremental ingestion complete."
+        )
+
     # =========================================================
     # INITIALIZATION
     # =========================================================
 
     def initialize(self) -> None:
-        """
-        Initialize the complete RAGFury pipeline.
-        """
+        """Initialize the complete RAGFury pipeline."""
 
-        print("\n🚀 Initializing RAGFury API...")
+        print(
+            "\n🚀 Initializing RAGFury API..."
+        )
 
         # -----------------------------------------------------
         # Validate data directory
@@ -78,7 +263,9 @@ class RAGService:
         # Load LLM
         # -----------------------------------------------------
 
-        print("🧠 Loading LLM...")
+        print(
+            "🧠 Loading LLM..."
+        )
 
         self.llm = Config.get_llm()
 
@@ -106,45 +293,32 @@ class RAGService:
         self.vector_store = VectorStore()
 
         # -----------------------------------------------------
-        # Process documents
+        # Incremental document synchronization
         # -----------------------------------------------------
 
+        self._sync_documents()
+
+        # -----------------------------------------------------
+        # Number of stored chunks
+        # -----------------------------------------------------
+
+        self.num_chunks = (
+            self.vector_store.get_document_count()
+        )
+
+
+
+
         print(
-            f"📚 Processing documents from: "
-            f"{self.data_directory}"
+            f"📊 Total indexed chunks: "
+            f"{self.num_chunks}"
         )
 
-        documents = (
-            self.doc_processor.process_pdfs(
-                self.data_directory
-            )
-        )
-
-        self.num_chunks = len(documents)
-
-        print(
-            f"📊 Created "
-            f"{self.num_chunks} document chunks"
-        )
-
-        if not documents:
+        if self.num_chunks == 0:
 
             raise ValueError(
-                "No PDF documents found "
-                "in the data directory."
+                "No indexed documents found."
             )
-
-        # -----------------------------------------------------
-        # Create vector store
-        # -----------------------------------------------------
-
-        print(
-            "🗂️ Creating hybrid vector store..."
-        )
-
-        self.vector_store.create_vectorstore(
-            documents
-        )
 
         # -----------------------------------------------------
         # Build LangGraph
@@ -161,7 +335,9 @@ class RAGService:
             llm=self.llm,
         )
 
-        self.graph = self.graph_builder.build()
+        self.graph = (
+            self.graph_builder.build()
+        )
 
         self.initialized = True
 
@@ -179,23 +355,7 @@ class RAGService:
         user_id: str,
         conversation_id: str,
     ) -> Dict[str, Any]:
-        """
-        Execute a question through the compiled
-        LangGraph workflow.
-
-        Args:
-            question:
-                User's current question.
-
-            user_id:
-                Manually supplied user identifier.
-                Used by Mem0 for long-term memory.
-
-            conversation_id:
-                Automatically generated conversation
-                identifier used by Redis for short-term
-                conversational memory.
-        """
+        """Execute a question through LangGraph."""
 
         if not self.initialized:
 
@@ -209,11 +369,12 @@ class RAGService:
                 "LangGraph is not available."
             )
 
-        # -----------------------------------------------------
-        # Initial LangGraph state
-        # -----------------------------------------------------
+
+
 
         initial_state = {
+
+
             "question": question,
             "user_id": user_id,
             "conversation_id": conversation_id,
@@ -239,13 +400,12 @@ rag_service = RAGService(
 # FASTAPI LIFESPAN
 # =============================================================
 
+
 @asynccontextmanager
 async def lifespan(
     app: FastAPI,
 ):
-    """
-    Initialize RAGFury when FastAPI starts.
-    """
+    """Initialize RAGFury when FastAPI starts."""
 
     try:
 
@@ -304,6 +464,7 @@ app.add_middleware(
 # ROOT
 # =============================================================
 
+
 @app.get("/")
 async def root():
     """API root endpoint."""
@@ -318,6 +479,7 @@ async def root():
 # =============================================================
 # HEALTH
 # =============================================================
+
 
 @app.get(
     "/health",
@@ -343,6 +505,7 @@ async def health():
 # SYSTEM INFO
 # =============================================================
 
+
 @app.get(
     "/api/v1/info",
     response_model=SystemInfoResponse,
@@ -366,6 +529,7 @@ async def system_info():
 # QUERY
 # =============================================================
 
+
 @app.post(
     "/api/v1/query",
     response_model=QueryResponse,
@@ -373,61 +537,11 @@ async def system_info():
 async def query(
     request: QueryRequest,
 ):
-    """
-    Execute a question through RAGFury.
+    """Execute a question through RAGFury."""
 
-    USER ID
-    -------
-    Manually supplied by the user.
-
-    Used for:
-        Mem0 long-term memory
-        Redis user identification
-
-    CONVERSATION ID
-    ---------------
-    Generated automatically by FastAPI
-    for a new conversation.
-
-    Reused when the frontend sends the existing
-    conversation ID.
-
-    Used for:
-        Redis short-term conversation memory
-
-    The LangGraph routing agent decides between:
-
-        rag
-        chat
-
-    RAG workflow:
-
-        Agent
-          ↓
-        Retrieve
-          ↓
-        Grade
-        ↙    ↘
-    Generate  Rewrite
-                 ↓
-              Retrieve
-
-    Chat workflow:
-
-        Agent
-          ↓
-        ChatNode
-          ↓
-      Redis + Mem0
-          ↓
-          LLM
-          ↓
-         END
-    """
-
-    # =========================================================
-    # VALIDATE QUESTION
-    # =========================================================
+    # ---------------------------------------------------------
+    # Validate question
+    # ---------------------------------------------------------
 
     question = request.question.strip()
 
@@ -438,9 +552,9 @@ async def query(
             detail="Question cannot be empty.",
         )
 
-    # =========================================================
-    # VALIDATE USER ID
-    # =========================================================
+    # ---------------------------------------------------------
+    # Validate user ID
+    # ---------------------------------------------------------
 
     user_id = request.user_id.strip()
 
@@ -451,9 +565,9 @@ async def query(
             detail="User ID cannot be empty.",
         )
 
-    # =========================================================
-    # GENERATE / REUSE CONVERSATION ID
-    # =========================================================
+    # ---------------------------------------------------------
+    # Conversation ID
+    # ---------------------------------------------------------
 
     if request.conversation_id:
 
@@ -474,7 +588,8 @@ async def query(
     else:
 
         conversation_id = (
-            f"conversation_{uuid.uuid4().hex[:12]}"
+            f"conversation_"
+            f"{uuid.uuid4().hex[:12]}"
         )
 
         print(
@@ -482,9 +597,9 @@ async def query(
             f"{conversation_id}"
         )
 
-    # =========================================================
-    # CHECK INITIALIZATION
-    # =========================================================
+    # ---------------------------------------------------------
+    # Initialization
+    # ---------------------------------------------------------
 
     if not rag_service.initialized:
 
@@ -496,9 +611,9 @@ async def query(
             ),
         )
 
-    # =========================================================
-    # EXECUTE GRAPH
-    # =========================================================
+    # ---------------------------------------------------------
+    # Execute graph
+    # ---------------------------------------------------------
 
     start_time = time.perf_counter()
 
@@ -512,30 +627,46 @@ async def query(
 
     except Exception as exc:
 
-     print("\n" + "=" * 70)
-     print("❌ QUERY PROCESSING FAILED")
-     print("=" * 70)
+        print(
+            "\n" + "=" * 70
+        )
 
-     print(f"Error type: {type(exc).__name__}")
-     print(f"Error: {exc}")
+        print(
+            "❌ QUERY PROCESSING FAILED"
+        )
 
-     traceback.print_exc()
+        print(
+            "=" * 70
+        )
 
-     print("=" * 70 + "\n")
+        print(
+            f"Error type: "
+            f"{type(exc).__name__}"
+        )
 
-     raise HTTPException(
-         status_code=500,
-         detail=str(exc),
-     ) from exc
+        print(
+            f"Error: {exc}"
+        )
+
+        traceback.print_exc()
+
+        print(
+            "=" * 70 + "\n"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
 
     elapsed = (
-         time.perf_counter()
-         - start_time
-     ) 
+        time.perf_counter()
+        - start_time
+    )
 
-    # =========================================================
-    # RETRIEVED DOCUMENTS
-    # =========================================================
+    # ---------------------------------------------------------
+    # Retrieved documents
+    # ---------------------------------------------------------
 
     raw_documents = result.get(
         "retrieved_docs",
@@ -576,72 +707,71 @@ async def query(
             )
         )
 
-    # =========================================================
-    # RESPONSE
-    # =========================================================
+    # ---------------------------------------------------------
+    # Response
+    # ---------------------------------------------------------
 
     return QueryResponse(
 
         question=question,
+
 
         answer=result.get(
             "answer",
             "No answer generated.",
         ),
 
-        # -----------------------------------------------------
-        # Conversation ID
-        # -----------------------------------------------------
-        # Frontend must store this ID and send it back
-        # for subsequent messages in the same conversation.
-        # -----------------------------------------------------
+
+
 
         conversation_id=conversation_id,
 
-        # -----------------------------------------------------
-        # Agent routing decision
-        # -----------------------------------------------------
-
+        
         next_step=result.get(
             "next_step"
         ),
 
-        # -----------------------------------------------------
-        # RAG information
-        # -----------------------------------------------------
+
+
 
         documents=documents,
+
 
         document_relevance=result.get(
             "document_relevance"
         ),
 
+
         grade_reason=result.get(
             "grade_reason"
         ),
+
 
         reflection=result.get(
             "reflection"
         ),
 
+
+
         reflection_passed=result.get(
             "reflection_passed"
         ),
+
+
 
         retrieval_attempts=result.get(
             "retrieval_attempts"
         ),
 
+
         reflection_attempts=result.get(
             "reflection_attempts"
         ),
 
-        # -----------------------------------------------------
-        # Performance
-        # -----------------------------------------------------
+
 
         response_time=round(
             elapsed,
             4,
-           ),
-        )  
+        ),
+    )
