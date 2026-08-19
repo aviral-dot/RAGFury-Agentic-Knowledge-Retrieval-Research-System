@@ -5,7 +5,8 @@ from langchain_core.messages import (
 )
 
 from src.memory.memory_manager import MemoryManager
-
+from src.memory.memory_jobs import save_memory_turn
+from src.memory.queue import memory_queue
 
 class ChatNode:
     """
@@ -99,7 +100,8 @@ Relevant long-term memories:
         answer = response.content
 
         
-        self.memory_manager.save_turn(
+        memory_queue.enqueue(
+            save_memory_turn,
             user_id=user_id,
             conversation_id=conversation_id,
             user_message=question,
