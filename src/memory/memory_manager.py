@@ -42,6 +42,7 @@ class MemoryManager:
         assistant_message: str,
     ):
 
+
         self.mem0.add(
             user_id=user_id,
             user_message=user_message,
