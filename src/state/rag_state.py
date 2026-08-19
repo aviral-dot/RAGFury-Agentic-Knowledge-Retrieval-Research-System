@@ -30,3 +30,8 @@ class RAGState(TypedDict, total=False):
     
     retrieval_attempts: int
     reflection_attempts: int
+
+    user_id: str
+    conversation_id: str
+    chat_history: list
+    relevant_memories: list

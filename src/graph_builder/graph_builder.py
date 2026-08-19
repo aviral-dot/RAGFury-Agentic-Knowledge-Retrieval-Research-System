@@ -7,10 +7,9 @@ from src.state.rag_state import RAGState
 from src.agent.agent import Agent
 
 from src.node.retrieval_nodes import RAGNodes
+from src.node.chat_nodes import ChatNode
 from src.node.grading_nodes import GradingNodes
 from src.node.rewrite_nodes import RewriteNodes
-from src.node.wikipedia_nodes import WikipediaNodes
-from src.node.reflection_nodes import ReflectionNodes
 from src.node.generation_nodes import GenerationNodes
 
 
@@ -26,17 +25,19 @@ class GraphBuilder:
                            |
                       next_step
                       /        \
-                    RAG       Wikipedia
-                    |             |
-                 Retrieve       Generate
-                    |             |
-                  Grade         Reflect
-                 /    \         /     \
-              YES      NO     PASS    FAIL
-               |        |       |       |
-            Generate  Rewrite   END    Retry
+                    RAG        Chat
+                    |           |
+                 Retrieve    ChatNode
+                    |           |
+                  Grade      Redis + Mem0
+                 /    \          |
+              YES      NO        LLM
+               |        |         |
+            Generate  Rewrite    END
+               |        |
+              END     Retrieve
                         |
-                     Retrieve
+                       Grade
     """
 
     def __init__(self, retriever, llm):
@@ -54,6 +55,7 @@ class GraphBuilder:
         self.retriever = retriever
         self.llm = llm
 
+        
 
         self.agent = Agent(
             llm=self.llm
@@ -64,7 +66,6 @@ class GraphBuilder:
         self.retrieval_nodes = RAGNodes(
             retriever=self.retriever,
             llm=self.llm,
-            
         )
 
         self.grading_nodes = GradingNodes(
@@ -77,51 +78,68 @@ class GraphBuilder:
 
         self.generation_nodes = GenerationNodes(
             llm=self.llm,
-            
         )
 
-        self.wikipedia_nodes = WikipediaNodes(
+        
+        self.chat_node_instance = ChatNode(
             llm=self.llm
         )
 
-        self.reflection_nodes = ReflectionNodes(
-            llm=self.llm
-        )
-
+    
 
     def agent_node(self, state: RAGState):
-        """
-        Run the routing agent.
+     """
+     Run the routing agent while preserving the complete
+     LangGraph state, including user and conversation IDs.
+     """
 
-        The agent ONLY decides which workflow should handle
-        the user's question.
+     print("\n--- AGENT ---")
 
-        The decision is stored in:
+    
+     question = state.get("question")
+     user_id = state.get("user_id")
+     conversation_id = state.get("conversation_id")
 
-            state["next_step"]
+     print(f"Question: {question}")
+     print(f"User ID: {user_id}")
+     print(f"Conversation ID: {conversation_id}")
 
-        Possible values:
+   
 
-            "rag"
-            "wikipedia"
-        """
-
-        print("\n--- AGENT ---")
-
-        question = state["question"]
-
-        next_step = self.agent.route(
-            question
+     if not question:
+        raise ValueError(
+            "question is missing from LangGraph state."
         )
 
-        print(
-            f"Next step: {next_step}"
+     if not user_id:
+        raise ValueError(
+            "user_id is missing from LangGraph state."
         )
 
-        return {
-            "next_step": next_step
-        }
+     if not conversation_id:
+        raise ValueError(
+            "conversation_id is missing from LangGraph state."
+        )
 
+    # ---------------------------------------------------------
+    # Route question
+    # ---------------------------------------------------------
+
+     next_step = self.agent.route(
+        question
+     )
+
+     print(
+        f"Next step: {next_step}"
+     )
+
+    
+
+     return {
+        **state,
+        "next_step": next_step,
+    } 
+    
     def retrieve_node(self, state: RAGState):
         """Execute document retrieval."""
 
@@ -158,39 +176,36 @@ class GraphBuilder:
             state
         )
 
-    def wikipedia_node(self, state: RAGState):
-        """Generate an answer using Wikipedia."""
+    
 
-        print("\n--- WIKIPEDIA ---")
+    def run_chat_node(self, state: RAGState):
+        """
+        Execute the conversational chat node.
 
-        return self.wikipedia_nodes.generate_wikipedia_answer(
+        ChatNode handles:
+
+        - Redis short-term memory
+        - Mem0 long-term memory
+        - Conversational context
+        - LLM response generation
+        """
+
+        print("\n--- CHAT ---")
+
+        return self.chat_node_instance.run(
             state
         )
 
-    def reflection_node(self, state: RAGState):
-        """Reflect on the generated Wikipedia answer."""
-
-        print("\n--- REFLECTION ---")
-
-        return self.reflection_nodes.reflect_on_answer(
-            state
-        )
-
-   
-
+    
     @staticmethod
     def route_after_agent(state: RAGState):
         """
         Route the workflow according to the Agent's decision.
 
-        The Agent stores its decision in:
-
-            state["next_step"]
-
         Returns:
 
-            "rag"       -> RAG workflow
-            "wikipedia" -> Wikipedia workflow
+            "rag"  -> RAG workflow
+            "chat" -> Chat workflow
         """
 
         next_step = state.get(
@@ -200,8 +215,8 @@ class GraphBuilder:
         if next_step == "rag":
             return "rag"
 
-        if next_step == "wikipedia":
-            return "wikipedia"
+        if next_step == "chat":
+            return "chat"
 
         raise ValueError(
             f"Invalid next_step selected by agent: {next_step}"
@@ -228,28 +243,6 @@ class GraphBuilder:
 
         return "rewrite"
 
-    @staticmethod
-    def route_after_reflection(state: RAGState):
-        """
-        Decide whether the Wikipedia answer passed reflection.
-
-        Returns:
-
-            "end"   -> reflection passed
-            "retry" -> reflection failed
-        """
-
-        passed = state.get(
-            "reflection_passed",
-            False
-        )
-
-        if passed:
-            return "end"
-
-        return "retry"
-
-   
 
     def build(self):
         """
@@ -263,8 +256,7 @@ class GraphBuilder:
             RAGState
         )
 
-      
-
+        
         workflow.add_node(
             "agent",
             self.agent_node
@@ -291,13 +283,8 @@ class GraphBuilder:
         )
 
         workflow.add_node(
-            "wikipedia",
-            self.wikipedia_node
-        )
-
-        workflow.add_node(
-            "reflect",
-            self.reflection_node
+            "chat",
+            self.run_chat_node
         )
 
         
@@ -313,18 +300,16 @@ class GraphBuilder:
             self.route_after_agent,
             {
                 "rag": "retrieve",
-                "wikipedia": "wikipedia",
+                "chat": "chat",
             },
         )
 
-      
+        
 
         workflow.add_edge(
             "retrieve",
             "grade"
         )
-
-       
 
         workflow.add_conditional_edges(
             "grade",
@@ -335,38 +320,22 @@ class GraphBuilder:
             },
         )
 
-       
-
         workflow.add_edge(
             "rewrite",
             "retrieve"
         )
-
-       
 
         workflow.add_edge(
             "generate",
             END
         )
 
-       
-
+        
         workflow.add_edge(
-            "wikipedia",
-            "reflect"
+            "chat",
+            END
         )
 
-      
+        
 
-        workflow.add_conditional_edges(
-            "reflect",
-            self.route_after_reflection,
-            {
-                "end": END,
-                "retry": "wikipedia",
-            },
-        )
-
-       
-
-        return workflow.compile()
+        return workflow.compile() 

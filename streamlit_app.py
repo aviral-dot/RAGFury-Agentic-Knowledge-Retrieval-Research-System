@@ -21,7 +21,6 @@ st.set_page_config(
 
 
 
-
 st.markdown(
     """
     <style>
@@ -43,67 +42,167 @@ st.markdown(
 
 
 
+
 def init_session_state():
-    """Initialize Streamlit session state."""
+    """
+    Initialize Streamlit session state.
+
+    user_id:
+        Manually entered by the user.
+        This identifies the user for Mem0 long-term memory.
+
+    conversation_id:
+        Generated automatically by FastAPI.
+        This identifies the current Redis conversation.
+
+    history:
+        Stores responses locally for UI display.
+    """
+
+    
 
     if "history" not in st.session_state:
         st.session_state.history = []
+
+    
+
+    if "user_id" not in st.session_state:
+        st.session_state.user_id = ""
+
+    
+    if "conversation_id" not in st.session_state:
+        st.session_state.conversation_id = None
+
+
+
+def start_new_conversation():
+    """
+    Start a new conversation.
+
+    The user ID stays the same.
+
+    The current conversation ID is cleared.
+    FastAPI will generate a new conversation ID
+    when the next question is sent.
+
+    Mem0:
+        Same user_id
+        → previous long-term memories remain available.
+
+    Redis:
+        New conversation_id
+        → new short-term conversation.
+    """
+
+    st.session_state.conversation_id = None
+
+    st.session_state.history = []
 
 
 
 
 def check_api_health():
-    """Check whether the FastAPI backend is available."""
+    """
+    Check whether the FastAPI backend is available.
+    """
 
     try:
+
         response = requests.get(
             f"{API_URL}/health",
             timeout=5,
         )
 
-        if response.status_code == 200:
-            return True
-
-        return False
+        return response.status_code == 200
 
     except requests.RequestException:
+
         return False
+
+
 
 
 def ask_backend(question: str):
-    """Send a question to the FastAPI backend."""
+    """
+    Send the user's question to FastAPI.
+
+    FastAPI expects:
+
+        question
+        user_id
+
+    conversation_id is sent only when an existing
+    conversation already exists.
+
+    For the first message of a new conversation,
+    conversation_id is omitted.
+
+    FastAPI then generates it automatically.
+    """
+
+    
+
+    payload = {
+        "question": question,
+        "user_id": st.session_state.user_id,
+    }
+
+    
+
+    if st.session_state.conversation_id:
+
+        payload["conversation_id"] = (
+            st.session_state.conversation_id
+        )
+
+    
 
     response = requests.post(
         f"{API_URL}/api/v1/query",
-        json={
-            "question": question,
-        },
+        json=payload,
         timeout=120,
     )
 
     response.raise_for_status()
 
-    return response.json()
+    result = response.json()
+
+    
+
+    returned_conversation_id = result.get(
+        "conversation_id"
+    )
+
+    if returned_conversation_id:
+
+        st.session_state.conversation_id = (
+            returned_conversation_id
+        )
+
+    return result
+
 
 
 
 def display_route(route: str):
-    """Display the route selected by the agent."""
+    """
+    Display the route selected by the Agent.
+    """
 
     if route == "rag":
 
         st.info(
             "📄 **Source: Company Documents**\n\n"
-            "The agent routed your question to the "
-            "company document RAG pipeline."
+            "The routing agent selected the "
+            "document RAG pipeline."
         )
 
-    elif route == "wikipedia":
+    elif route == "chat":
 
         st.info(
-            "🌐 **Source: External Knowledge**\n\n"
-            "The agent routed your question to "
-            "external knowledge."
+            "💬 **Source: Chat Agent**\n\n"
+            "The routing agent selected the "
+            "conversational Chat agent."
         )
 
     elif route:
@@ -113,15 +212,185 @@ def display_route(route: str):
         )
 
 
+
+
+def display_rag_details(result):
+    """
+    Display RAG-specific information.
+
+    These fields are normally populated only
+    when the Agent selects the RAG workflow.
+    """
+
+    route = result.get("next_step")
+
+    if route != "rag":
+        return
+
+    documents = result.get(
+        "documents",
+        [],
+    )
+
+    document_relevance = result.get(
+        "document_relevance"
+    )
+
+    grade_reason = result.get(
+        "grade_reason"
+    )
+
+    retrieval_attempts = result.get(
+        "retrieval_attempts"
+    )
+
+    
+
+    if documents:
+
+        with st.expander(
+            f"📚 Retrieved Documents ({len(documents)})"
+        ):
+
+            for index, document in enumerate(
+                documents,
+                start=1,
+            ):
+
+                st.markdown(
+                    f"### Document {index}"
+                )
+
+                content = document.get(
+                    "content",
+                    "",
+                )
+
+                metadata = document.get(
+                    "metadata",
+                    {},
+                )
+
+                if content:
+
+                    st.markdown(
+                        content
+                    )
+
+                if metadata:
+
+                    st.caption(
+                        f"Metadata: {metadata}"
+                    )
+
+                if index < len(documents):
+
+                    st.divider()
+
+    
+
+    if (
+        document_relevance is not None
+        or grade_reason
+    ):
+
+        with st.expander(
+            "🧠 Document Grading"
+        ):
+
+            if document_relevance is not None:
+
+                st.write(
+                    "Relevant:",
+                    document_relevance,
+                )
+
+            if grade_reason:
+
+                st.write(
+                    "Reason:",
+                    grade_reason,
+                )
+
+    
+    if retrieval_attempts is not None:
+
+        st.caption(
+            f"🔄 Retrieval attempts: "
+            f"{retrieval_attempts}"
+        )
+
+
+
+
+def display_chat_details(result):
+    """
+    Display information related to the Chat agent.
+    """
+
+    route = result.get("next_step")
+
+    if route != "chat":
+        return
+
+    memories = result.get(
+        "relevant_memories"
+    )
+
+    if memories:
+
+        with st.expander(
+            "🧠 Long-Term Memory Used"
+        ):
+
+            for memory in memories:
+
+                if isinstance(
+                    memory,
+                    dict,
+                ):
+
+                    text = memory.get(
+                        "memory",
+                        memory.get(
+                            "text",
+                            "",
+                        ),
+                    )
+
+                else:
+
+                    text = str(memory)
+
+                if text:
+
+                    st.markdown(
+                        f"- {text}"
+                    )
+
+    else:
+
+        st.caption(
+            "🧠 No relevant long-term memories found."
+        )
+
+
+
+
 def display_history():
-    """Display recent searches."""
+    """
+    Display recent conversation turns.
+    """
 
     if not st.session_state.history:
+
         return
 
     st.markdown("---")
 
-    st.markdown("### 📜 Recent Searches")
+    st.markdown(
+        "### 📜 Recent Conversation"
+    )
 
     for item in reversed(
         st.session_state.history[-5:]
@@ -133,9 +402,12 @@ def display_history():
                 f"**Q:** {item['question']}"
             )
 
-            answer_preview = item["answer"]
+            answer_preview = item[
+                "answer"
+            ]
 
             if len(answer_preview) > 200:
+
                 answer_preview = (
                     answer_preview[:200]
                     + "..."
@@ -156,10 +428,10 @@ def display_history():
                     "📄 Source: Company Documents"
                 )
 
-            elif route == "wikipedia":
+            elif route == "chat":
 
                 st.caption(
-                    "🌐 Source: External Knowledge"
+                    "💬 Source: Chat Agent"
                 )
 
             else:
@@ -177,26 +449,27 @@ def display_history():
 
 
 def main():
-    """Run the Streamlit application."""
+    """
+    Run the Streamlit application.
+    """
 
     init_session_state()
 
+    
 
-    st.title(
-        "🔍 RAGFury"
-    )
+    st.title("🔍 RAGFury")
 
     st.subheader(
-        "Agentic Knowledge Retrieval & Research System"
+        "Agentic Knowledge Retrieval & Conversational AI"
     )
 
     st.markdown(
         """
         Ask questions about your **company documents**
-        or **external knowledge**.
+        or have a **general conversation** with the AI.
 
-        🤖 The agent automatically decides which knowledge
-        source should be used.
+        🤖 The routing agent automatically decides whether
+        to use the **RAG pipeline** or the **Chat agent**.
         """
     )
 
@@ -216,22 +489,121 @@ def main():
 
         st.info(
             "Start the FastAPI backend with:\n\n"
-            "`uvicorn src.api.main:app`"
+            "`uvicorn api.main:app --reload`"
         )
 
         return
 
-   
+    
+
+    with st.sidebar:
+
+        st.header(
+            "💬 Conversation"
+        )
+
+        
+
+        st.caption(
+            "User ID"
+        )
+
+        user_id = st.text_input(
+            "Enter your User ID",
+            value=st.session_state.user_id,
+            placeholder="e.g. user_12345",
+            label_visibility="collapsed",
+        )
+
+        user_id = user_id.strip()
+
+        
+        if user_id != st.session_state.user_id:
+
+            st.session_state.user_id = user_id
+
+            
+
+            st.session_state.conversation_id = None
+
+            st.session_state.history = []
+
+        
+
+        st.caption(
+            "Current conversation"
+        )
+
+        if st.session_state.conversation_id:
+
+            st.code(
+                st.session_state.conversation_id
+            )
+
+        else:
+
+            st.info(
+                "Will be generated automatically "
+                "when you send your first message."
+            )
+
+        st.divider()
+
+        
+
+        st.markdown(
+            """
+            **Memory Architecture**
+
+            🔵 Redis  
+            Short-term conversation memory
+
+            🟣 Mem0  
+            Long-term semantic memory
+
+            **User ID**
+            → identifies your long-term memory
+
+            **Conversation ID**
+            → automatically identifies the current Redis conversation
+            """
+        )
+
+        st.divider()
+
+        
+
+        if st.button(
+            "🆕 New Conversation"
+        ):
+
+            start_new_conversation()
+
+            st.rerun()
+
+    
+
+    if not st.session_state.user_id:
+
+        st.warning(
+            "👤 Please enter your User ID in the sidebar "
+            "before asking a question."
+        )
+
+    
 
     st.markdown("---")
 
-    with st.form("search_form"):
+    with st.form(
+        "search_form"
+    ):
 
         question = st.text_input(
             "Ask RAGFury",
+
             placeholder=(
-                "e.g. How much sick leave can "
-                "an employee take?"
+                "e.g. How much sick leave "
+                "can an employee take?"
             ),
         )
 
@@ -242,6 +614,19 @@ def main():
     
 
     if submit:
+
+       
+
+        if not st.session_state.user_id:
+
+            st.error(
+                "❌ Please enter a User ID "
+                "in the sidebar first."
+            )
+
+            return
+
+        
 
         question = question.strip()
 
@@ -261,6 +646,8 @@ def main():
 
             try:
 
+                
+
                 result = ask_backend(
                     question
                 )
@@ -270,26 +657,41 @@ def main():
                     - start_time
                 )
 
+                
+
                 answer = result.get(
                     "answer",
                     "No answer generated.",
                 )
 
+                route = result.get(
+                    "next_step",
+                    "unknown",
+                )
+
                 
+                conversation_id = result.get(
+                    "conversation_id"
+                )
+
+                if conversation_id:
+
+                    st.session_state.conversation_id = (
+                        conversation_id
+                    )
+
+               
 
                 st.session_state.history.append(
                     {
                         "question": question,
                         "answer": answer,
                         "time": elapsed_time,
-                        "route": result.get(
-                            "next_step",
-                            "unknown",
-                        ),
+                        "route": route,
                     }
                 )
 
-               
+                
 
                 st.markdown(
                     "### 💡 Answer"
@@ -299,16 +701,54 @@ def main():
                     answer
                 )
 
-                st.caption(
-                    f"⏱️ Response time: "
-                    f"{elapsed_time:.2f} seconds"
+                
+                display_route(
+                    route
                 )
+
+                
+                display_rag_details(
+                    result
+                )
+
+                display_chat_details(
+                    result
+                )
+
+                
+
+                backend_time = result.get(
+                    "response_time"
+                )
+
+                if backend_time is not None:
+
+                    st.caption(
+                        f"⏱️ Backend response time: "
+                        f"{backend_time:.2f}s"
+                    )
+
+                st.caption(
+                    f"⏱️ Total UI response time: "
+                    f"{elapsed_time:.2f}s"
+                )
+
+                
+
+                if st.session_state.conversation_id:
+
+                    st.caption(
+                        "💬 Conversation: "
+                        f"{st.session_state.conversation_id}"
+                    )
+
+            
 
             except requests.exceptions.Timeout:
 
                 st.error(
                     "⏱️ Request timed out. "
-                    "The RAG pipeline took too long."
+                    "The RAGFury pipeline took too long."
                 )
 
             except requests.exceptions.ConnectionError:
@@ -331,6 +771,7 @@ def main():
                     )
 
                 except Exception:
+
                     pass
 
             except Exception as exc:
@@ -347,4 +788,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()

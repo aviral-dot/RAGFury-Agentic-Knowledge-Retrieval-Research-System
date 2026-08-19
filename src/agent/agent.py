@@ -8,11 +8,15 @@ from pydantic import BaseModel, Field
 class RouteDecision(BaseModel):
     """Structured routing decision made by the agent."""
 
-    next_step: Literal["rag", "wikipedia"] = Field(
+    next_step: Literal["rag", "chat"] = Field(
         description=(
             "The workflow that should handle the user's question. "
-            "Choose 'rag' for questions related to indexed company documents "
-            "and 'wikipedia' for general external knowledge."
+            "Choose 'rag' for questions that require information "
+            "from the indexed private/company documents. "
+            "Choose 'chat' for general conversation, general "
+            "knowledge, follow-up questions, coding, writing, "
+            "brainstorming, or questions that do not require "
+            "the private document corpus."
         )
     )
 
@@ -22,8 +26,13 @@ class Agent:
     Routing agent responsible for selecting the next workflow.
 
     Available workflows:
-        - rag: comapny document retrieval and RAG pipeline
-        - wikipedia: external Wikipedia knowledge
+
+    - rag:
+        Private/company document retrieval and RAG.
+
+    - chat:
+        General conversational AI with short-term and
+        long-term memory.
 
     The agent only makes the routing decision.
     It does not retrieve documents or generate answers.
@@ -40,6 +49,7 @@ class Agent:
 
         self.llm = llm
         self.agent = None
+        self.system_prompt = None
 
     def build(self):
         """
@@ -53,50 +63,133 @@ class Agent:
 You are the routing agent of RAGFury.
 
 Your ONLY responsibility is to decide which workflow
-should handle the user's question.
+should handle the user's current message.
 
-You have exactly two workflows:
+You have exactly TWO workflows:
 
+==================================================
 1. rag
+==================================================
 
-Choose "rag" when the question is related to:
-- the user's uploaded documents
-- indexed documents
-- information contained in the document corpus
-- private or project-specific information
-- company-specific information
-- information that is expected to be available
-  in the user's indexed documents
+Choose "rag" when the user is asking for information
+that should come from the indexed private/company
+document collection.
 
-2. wikipedia
+Examples:
 
-Choose "wikipedia" when the question requires:
-- general knowledge
-- public factual information
-- history
-- science
-- people
-- places
-- general concepts
-- information that is unlikely to be available
-  in the user's indexed documents
+- Questions about uploaded documents
+- Questions about company policies
+- Questions about internal/project documentation
+- Questions asking "according to the document..."
+- Questions about information expected to exist
+  in the indexed document corpus
+- Questions requiring retrieval from private documents
 
-Rules:
+Examples:
 
-- Choose exactly ONE workflow.
-- Do not answer the question.
-- Do not retrieve documents.
-- Do not search Wikipedia.
-- Do not generate an answer.
-- Do not rewrite the question.
-- Do not execute any tools.
+"What is the company's leave policy?"
 
-Return only a structured routing decision.
+"How many sick leave days are allowed?"
 
-The allowed values are:
+"According to the remote work policy, what are
+the working hours?"
+
+"What does our security policy say about passwords?"
+
+
+==================================================
+2. chat
+==================================================
+
+Choose "chat" when the question does NOT require
+retrieving information from the private document corpus.
+
+This includes:
+
+- General knowledge
+- General factual questions
+- Explanations
+- Casual conversation
+- Greetings
+- Follow-up conversation
+- Questions about previous conversation
+- Personal conversational context
+- Coding help
+- Debugging help
+- Writing help
+- Brainstorming
+- Opinions
+- Everyday questions
+- Creative tasks
+- Questions that can be answered without
+  the private document collection
+
+Examples:
+
+"Hello"
+
+"How are you?"
+
+"What is Python?"
+
+"Explain Docker to me."
+
+"Help me debug this code."
+
+"What did I ask you earlier?"
+
+"Can you explain that again?"
+
+"Give me ideas for my project."
+
+
+==================================================
+IMPORTANT ROUTING RULES
+==================================================
+
+1. The current user message has the highest priority.
+
+2. If the question explicitly depends on information
+   inside private/company documents, choose "rag".
+
+3. If the question is conversational or can be answered
+   without the private document collection, choose "chat".
+
+4. Follow-up questions should normally go to "chat"
+   when they depend on previous conversation context.
+
+5. Questions about the user's previous messages,
+   preferences, or remembered information should go
+   to "chat".
+
+6. Do NOT choose "rag" simply because the question
+   is factual.
+
+7. Do NOT choose "chat" when the user explicitly asks
+   about information contained in the indexed documents.
+
+8. If the question is ambiguous and does not clearly
+   require private document retrieval, choose "chat".
+
+9. Do not answer the user's question.
+
+10. Do not retrieve documents.
+
+11. Do not generate an answer.
+
+12. Do not rewrite the question.
+
+13. Do not execute tools.
+
+14. Return ONLY the structured routing decision.
+
+
+==================================================
+ALLOWED VALUES
+==================================================
 
 rag
-wikipedia
+chat
 """
 
         self.agent = self.llm.with_structured_output(
@@ -116,7 +209,7 @@ wikipedia
                 User's question.
 
         Returns:
-            "rag" or "wikipedia".
+            "rag" or "chat".
         """
 
         if self.agent is None:

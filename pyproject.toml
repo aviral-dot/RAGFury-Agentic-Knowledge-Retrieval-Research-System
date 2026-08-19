@@ -25,4 +25,6 @@ dependencies = [
     "jsonpatch>=1.33",
     "langchain-chroma>=0.2.6",
     "rank-bm25>=0.2.2",
+    "mem0ai>=2.0.18",
+    "google-genai>=2.18.1",
 ]

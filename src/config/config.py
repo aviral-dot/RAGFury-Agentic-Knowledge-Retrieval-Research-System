@@ -14,7 +14,7 @@ class Config:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
     # Groq model
-    LLM_MODEL = "llama-3.1-8b-instant"
+    LLM_MODEL = "openai/gpt-oss-20b"
 
     # Document Processing
     CHUNK_SIZE = 500
@@ -40,3 +40,5 @@ class Config:
             groq_api_key=cls.GROQ_API_KEY,
             temperature=0
         )
+
+    
