@@ -106,6 +106,8 @@ Relevant long-term memories:
             user_message=question,
             assistant_message=answer,
         )
+
+        
         
         memory_queue.enqueue(
             save_memory_turn,
