@@ -10,6 +10,14 @@ from typing import Any, Dict, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from src.guardrails.exceptions import (
+    MaliciousDocumentError,
+)
+
+from src.guardrails.guardrail_manager import (
+    check_input,
+    check_output,
+)
 
 from src.config.config import Config
 from src.document_ingestion.document_processor import (
@@ -110,9 +118,7 @@ class RAGService:
         ) as file:
 
             json.dump(
-                sorted(
-                    self.processed_files
-                ),
+                sorted(self.processed_files),
                 file,
                 indent=2,
             )
@@ -133,8 +139,7 @@ class RAGService:
         new_files = [
             file
             for file in pdf_files
-            if file.name
-            not in self.processed_files
+            if file.name not in self.processed_files
         ]
 
         return new_files
@@ -164,9 +169,7 @@ class RAGService:
         # Find new PDFs
         # -----------------------------------------------------
 
-        new_files = (
-            self._get_new_pdf_files()
-        )
+        new_files = self._get_new_pdf_files()
 
         if not new_files:
 
@@ -175,7 +178,7 @@ class RAGService:
                 "Skipping document processing."
             )
 
-            # Load existing persistent vector store
+            # Load existing persistent vector store.
             self.vector_store.initialize()
 
             return
@@ -197,15 +200,11 @@ class RAGService:
                 f"{pdf_file.name}"
             )
 
-            chunks = (
-                self.doc_processor.process_pdf(
-                    pdf_file
-                )
+            chunks = self.doc_processor.process_pdf(
+                pdf_file
             )
 
-            all_new_chunks.extend(
-                chunks
-            )
+            all_new_chunks.extend(chunks)
 
         # -----------------------------------------------------
         # Add ONLY new chunks to vector store
@@ -306,9 +305,6 @@ class RAGService:
             self.vector_store.get_document_count()
         )
 
-
-
-
         print(
             f"📊 Total indexed chunks: "
             f"{self.num_chunks}"
@@ -369,12 +365,7 @@ class RAGService:
                 "LangGraph is not available."
             )
 
-
-
-
         initial_state = {
-
-
             "question": question,
             "user_id": user_id,
             "conversation_id": conversation_id,
@@ -539,9 +530,9 @@ async def query(
 ):
     """Execute a question through RAGFury."""
 
-    # ---------------------------------------------------------
-    # Validate question
-    # ---------------------------------------------------------
+    # =========================================================
+    # VALIDATE QUESTION
+    # =========================================================
 
     question = request.question.strip()
 
@@ -552,9 +543,42 @@ async def query(
             detail="Question cannot be empty.",
         )
 
-    # ---------------------------------------------------------
-    # Validate user ID
-    # ---------------------------------------------------------
+    # =========================================================
+    # INPUT GUARDRAIL
+    # =========================================================
+
+    try:
+
+        input_allowed = await check_input(
+            question
+        )
+
+    except Exception as exc:
+
+        print(
+            f"🚨 Input guardrail failed: {exc}"
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Input security validation failed."
+            ),
+        ) from exc
+
+    if not input_allowed:
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Your request was blocked by the "
+                "RAGFury safety policy."
+            ),
+        )
+
+    # =========================================================
+    # VALIDATE USER ID
+    # =========================================================
 
     user_id = request.user_id.strip()
 
@@ -565,9 +589,9 @@ async def query(
             detail="User ID cannot be empty.",
         )
 
-    # ---------------------------------------------------------
-    # Conversation ID
-    # ---------------------------------------------------------
+    # =========================================================
+    # CONVERSATION ID
+    # =========================================================
 
     if request.conversation_id:
 
@@ -597,9 +621,9 @@ async def query(
             f"{conversation_id}"
         )
 
-    # ---------------------------------------------------------
-    # Initialization
-    # ---------------------------------------------------------
+    # =========================================================
+    # INITIALIZATION CHECK
+    # =========================================================
 
     if not rag_service.initialized:
 
@@ -611,9 +635,9 @@ async def query(
             ),
         )
 
-    # ---------------------------------------------------------
-    # Execute graph
-    # ---------------------------------------------------------
+    # =========================================================
+    # EXECUTE GRAPH
+    # =========================================================
 
     start_time = time.perf_counter()
 
@@ -624,6 +648,17 @@ async def query(
             user_id=user_id,
             conversation_id=conversation_id,
         )
+
+    except MaliciousDocumentError as exc:
+
+       print(
+        f"🚫 MALICIOUS DOCUMENT BLOCKED: {exc}"
+       )
+
+       raise HTTPException(
+        status_code=400,
+        detail=str(exc),
+       ) from exc   
 
     except Exception as exc:
 
@@ -659,14 +694,56 @@ async def query(
             detail=str(exc),
         ) from exc
 
+    # =========================================================
+    # OUTPUT GUARDRAIL
+    # =========================================================
+
+    answer = result.get(
+        "answer",
+        "",
+    )
+
+    try:
+
+        output_allowed = await check_output(
+            answer
+        )
+
+    except Exception as exc:
+
+        print(
+            f"🚨 Output guardrail failed: {exc}"
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Output security validation failed."
+            ),
+        ) from exc
+
+    if not output_allowed:
+
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "The generated response was blocked "
+                "by the RAGFury safety policy."
+            ),
+        )
+
+    # =========================================================
+    # RESPONSE TIME
+    # =========================================================
+
     elapsed = (
         time.perf_counter()
         - start_time
     )
 
-    # ---------------------------------------------------------
-    # Retrieved documents
-    # ---------------------------------------------------------
+    # =========================================================
+    # RETRIEVED DOCUMENTS
+    # =========================================================
 
     raw_documents = result.get(
         "retrieved_docs",
@@ -707,68 +784,46 @@ async def query(
             )
         )
 
-    # ---------------------------------------------------------
-    # Response
-    # ---------------------------------------------------------
+    # =========================================================
+    # RESPONSE
+    # =========================================================
 
     return QueryResponse(
-
         question=question,
 
-
-        answer=result.get(
-            "answer",
-            "No answer generated.",
-        ),
-
-
-
+        answer=answer or "No answer generated.",
 
         conversation_id=conversation_id,
 
-        
         next_step=result.get(
             "next_step"
         ),
 
-
-
-
         documents=documents,
-
 
         document_relevance=result.get(
             "document_relevance"
         ),
 
-
         grade_reason=result.get(
             "grade_reason"
         ),
-
 
         reflection=result.get(
             "reflection"
         ),
 
-
-
         reflection_passed=result.get(
             "reflection_passed"
         ),
-
-
 
         retrieval_attempts=result.get(
             "retrieval_attempts"
         ),
 
-
         reflection_attempts=result.get(
             "reflection_attempts"
         ),
-
-
 
         response_time=round(
             elapsed,

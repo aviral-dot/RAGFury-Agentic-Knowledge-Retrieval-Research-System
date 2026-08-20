@@ -1,0 +1,68 @@
+models:
+  # ============================================================
+  # MAIN MODEL
+  # ============================================================
+
+  - type: main
+    engine: nim
+    model: meta/llama-3.1-8b-instruct
+
+  # ============================================================
+  # CONTENT SAFETY
+  # ============================================================
+
+  - type: content_safety
+    engine: nim
+    model: nvidia/llama-3.1-nemotron-safety-guard-8b-v3
+
+rails:
+  # ============================================================
+  # 1. INPUT RAILS
+  # ============================================================
+
+  input:
+    parallel: true
+
+    flows:
+      # Content safety
+      - content safety check input $model=content_safety
+
+      # Jailbreak detection
+      - jailbreak detection model
+
+  # ============================================================
+  # 2. RETRIEVAL RAILS
+  # ============================================================
+
+  retrieval:
+    flows:
+      # Detect prompt injection / jailbreak attempts
+      # contained inside retrieved documents.
+      - jailbreak detection model
+
+  # ============================================================
+  # 3. OUTPUT RAILS
+  # ============================================================
+
+  output:
+    flows:
+      # Harmful generated content
+      - content safety check output $model=content_safety
+
+  # ============================================================
+  # JAILBREAK DETECTION CONFIGURATION
+  # ============================================================
+
+  config:
+    jailbreak_detection:
+      nim_base_url: "https://ai.api.nvidia.com"
+
+      nim_server_endpoint: "/v1/security/nvidia/nemoguard-jailbreak-detect"
+
+      api_key_env_var: "NVIDIA_API_KEY"
+
+# ============================================================
+# FAIL CLOSED
+# ============================================================
+
+enable_rails_exceptions: true

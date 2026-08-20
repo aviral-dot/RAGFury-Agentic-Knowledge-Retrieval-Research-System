@@ -6,11 +6,7 @@ import requests
 import streamlit as st
 
 
-
-
 API_URL = "http://127.0.0.1:8000"
-
-
 
 
 st.set_page_config(
@@ -18,7 +14,6 @@ st.set_page_config(
     page_icon="🔍",
     layout="centered",
 )
-
 
 
 st.markdown(
@@ -41,8 +36,6 @@ st.markdown(
 )
 
 
-
-
 def init_session_state():
     """
     Initialize Streamlit session state.
@@ -59,20 +52,14 @@ def init_session_state():
         Stores responses locally for UI display.
     """
 
-    
-
     if "history" not in st.session_state:
         st.session_state.history = []
-
-    
 
     if "user_id" not in st.session_state:
         st.session_state.user_id = ""
 
-    
     if "conversation_id" not in st.session_state:
         st.session_state.conversation_id = None
-
 
 
 def start_new_conversation():
@@ -84,21 +71,10 @@ def start_new_conversation():
     The current conversation ID is cleared.
     FastAPI will generate a new conversation ID
     when the next question is sent.
-
-    Mem0:
-        Same user_id
-        → previous long-term memories remain available.
-
-    Redis:
-        New conversation_id
-        → new short-term conversation.
     """
 
     st.session_state.conversation_id = None
-
     st.session_state.history = []
-
-
 
 
 def check_api_health():
@@ -120,8 +96,6 @@ def check_api_health():
         return False
 
 
-
-
 def ask_backend(question: str):
     """
     Send the user's question to FastAPI.
@@ -140,22 +114,16 @@ def ask_backend(question: str):
     FastAPI then generates it automatically.
     """
 
-    
-
     payload = {
         "question": question,
         "user_id": st.session_state.user_id,
     }
-
-    
 
     if st.session_state.conversation_id:
 
         payload["conversation_id"] = (
             st.session_state.conversation_id
         )
-
-    
 
     response = requests.post(
         f"{API_URL}/api/v1/query",
@@ -166,8 +134,6 @@ def ask_backend(question: str):
     response.raise_for_status()
 
     result = response.json()
-
-    
 
     returned_conversation_id = result.get(
         "conversation_id"
@@ -180,8 +146,6 @@ def ask_backend(question: str):
         )
 
     return result
-
-
 
 
 def display_route(route: str):
@@ -210,8 +174,6 @@ def display_route(route: str):
         st.info(
             f"🤖 **Agent Route:** `{route}`"
         )
-
-
 
 
 def display_rag_details(result):
@@ -243,8 +205,6 @@ def display_rag_details(result):
     retrieval_attempts = result.get(
         "retrieval_attempts"
     )
-
-    
 
     if documents:
 
@@ -287,8 +247,6 @@ def display_rag_details(result):
 
                     st.divider()
 
-    
-
     if (
         document_relevance is not None
         or grade_reason
@@ -312,15 +270,12 @@ def display_rag_details(result):
                     grade_reason,
                 )
 
-    
     if retrieval_attempts is not None:
 
         st.caption(
             f"🔄 Retrieval attempts: "
             f"{retrieval_attempts}"
         )
-
-
 
 
 def display_chat_details(result):
@@ -373,8 +328,6 @@ def display_chat_details(result):
         st.caption(
             "🧠 No relevant long-term memories found."
         )
-
-
 
 
 def display_history():
@@ -446,16 +399,12 @@ def display_history():
             )
 
 
-
-
 def main():
     """
     Run the Streamlit application.
     """
 
     init_session_state()
-
-    
 
     st.title("🔍 RAGFury")
 
@@ -472,8 +421,6 @@ def main():
         to use the **RAG pipeline** or the **Chat agent**.
         """
     )
-
-   
 
     if check_api_health():
 
@@ -494,15 +441,11 @@ def main():
 
         return
 
-    
-
     with st.sidebar:
 
         st.header(
             "💬 Conversation"
         )
-
-        
 
         st.caption(
             "User ID"
@@ -517,18 +460,13 @@ def main():
 
         user_id = user_id.strip()
 
-        
         if user_id != st.session_state.user_id:
 
             st.session_state.user_id = user_id
 
-            
-
             st.session_state.conversation_id = None
 
             st.session_state.history = []
-
-        
 
         st.caption(
             "Current conversation"
@@ -548,8 +486,6 @@ def main():
             )
 
         st.divider()
-
-        
 
         st.markdown(
             """
@@ -571,8 +507,6 @@ def main():
 
         st.divider()
 
-        
-
         if st.button(
             "🆕 New Conversation"
         ):
@@ -581,16 +515,12 @@ def main():
 
             st.rerun()
 
-    
-
     if not st.session_state.user_id:
 
         st.warning(
             "👤 Please enter your User ID in the sidebar "
             "before asking a question."
         )
-
-    
 
     st.markdown("---")
 
@@ -600,7 +530,6 @@ def main():
 
         question = st.text_input(
             "Ask RAGFury",
-
             placeholder=(
                 "e.g. How much sick leave "
                 "can an employee take?"
@@ -611,11 +540,7 @@ def main():
             "🤖 Ask Agent"
         )
 
-    
-
     if submit:
-
-       
 
         if not st.session_state.user_id:
 
@@ -625,8 +550,6 @@ def main():
             )
 
             return
-
-        
 
         question = question.strip()
 
@@ -646,8 +569,6 @@ def main():
 
             try:
 
-                
-
                 result = ask_backend(
                     question
                 )
@@ -656,8 +577,6 @@ def main():
                     time.time()
                     - start_time
                 )
-
-                
 
                 answer = result.get(
                     "answer",
@@ -669,7 +588,6 @@ def main():
                     "unknown",
                 )
 
-                
                 conversation_id = result.get(
                     "conversation_id"
                 )
@@ -680,8 +598,6 @@ def main():
                         conversation_id
                     )
 
-               
-
                 st.session_state.history.append(
                     {
                         "question": question,
@@ -691,8 +607,6 @@ def main():
                     }
                 )
 
-                
-
                 st.markdown(
                     "### 💡 Answer"
                 )
@@ -701,12 +615,10 @@ def main():
                     answer
                 )
 
-                
                 display_route(
                     route
                 )
 
-                
                 display_rag_details(
                     result
                 )
@@ -714,8 +626,6 @@ def main():
                 display_chat_details(
                     result
                 )
-
-                
 
                 backend_time = result.get(
                     "response_time"
@@ -733,16 +643,12 @@ def main():
                     f"{elapsed_time:.2f}s"
                 )
 
-                
-
                 if st.session_state.conversation_id:
 
                     st.caption(
                         "💬 Conversation: "
                         f"{st.session_state.conversation_id}"
                     )
-
-            
 
             except requests.exceptions.Timeout:
 
@@ -760,19 +666,54 @@ def main():
 
             except requests.exceptions.HTTPError as exc:
 
-                st.error(
-                    f"❌ API error: {exc}"
-                )
+                # ------------------------------------------------
+                # Handle FastAPI HTTP errors cleanly
+                # ------------------------------------------------
 
                 try:
 
-                    st.json(
-                        exc.response.json()
+                    error_data = exc.response.json()
+
+                    detail = error_data.get(
+                        "detail",
+                        "The request was rejected by the API.",
                     )
 
                 except Exception:
 
-                    pass
+                    detail = (
+                        "The request was rejected by the API."
+                    )
+
+                # ------------------------------------------------
+                # 400 = Safety / validation rejection
+                # ------------------------------------------------
+
+                if exc.response.status_code == 400:
+
+                    st.warning(
+                        f"🛡️ {detail}"
+                    )
+
+                # ------------------------------------------------
+                # 503 = Backend / security service failure
+                # ------------------------------------------------
+
+                elif exc.response.status_code == 503:
+
+                    st.error(
+                        f"🚨 {detail}"
+                    )
+
+                # ------------------------------------------------
+                # Other HTTP errors
+                # ------------------------------------------------
+
+                else:
+
+                    st.error(
+                        f"❌ {detail}"
+                    )
 
             except Exception as exc:
 
@@ -780,11 +721,7 @@ def main():
                     f"❌ Unexpected error: {exc}"
                 )
 
-    
-
     display_history()
-
-
 
 
 if __name__ == "__main__":
