@@ -27,4 +27,7 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "mem0ai>=2.0.18",
     "google-genai>=2.18.1",
+    "deepeval>=4.2.0",
+    "langchain-openai>=0.3.35",
+    "nltk>=3.10.3",
 ]

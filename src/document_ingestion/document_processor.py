@@ -20,7 +20,7 @@ class DocumentProcessor:
     def __init__(
         self,
         model_name: str = "all-MiniLM-L6-v2",
-        threshold: float = 0.3,
+        threshold: float = 0.6,
     ):
         self.model_name = model_name
         self.threshold = threshold

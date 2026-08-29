@@ -3,12 +3,39 @@
 import json
 from pathlib import Path
 from typing import List
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from pydantic import ConfigDict
 
 from langchain_community.retrievers import BM25Retriever
 from langchain.retrievers import EnsembleRetriever
 from langchain.schema import Document
 from langchain_chroma import Chroma
+from sentence_transformers import CrossEncoder
 from langchain_huggingface import HuggingFaceEmbeddings
+
+
+class RerankingRetriever(BaseRetriever):
+    """Wraps the hybrid retriever so invoke() returns final reranked top-k docs."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    base_retriever: object
+    vector_store: object
+    k: int = 2
+
+    def _get_relevant_documents(
+        self,
+        query: str,
+        *,
+        run_manager: CallbackManagerForRetrieverRun,
+    ) -> List[Document]:
+        docs = self.base_retriever.invoke(query)
+        return self.vector_store._rerank(
+            query=query,
+            documents=docs,
+            k=self.k,
+        )
 
 
 class VectorStore:
@@ -53,6 +80,9 @@ class VectorStore:
             )
         )
 
+        self.reranker = CrossEncoder(
+           "cross-encoder/ms-marco-MiniLM-L-6-v2"
+        )
         self.vectorstore: Chroma | None = None
 
         self.dense_retriever = None
@@ -255,7 +285,7 @@ class VectorStore:
 
         self.dense_retriever = (
             self.vectorstore.as_retriever(
-                search_kwargs={"k": 4}
+                search_kwargs={"k": 5}
             )
         )
 
@@ -273,7 +303,7 @@ class VectorStore:
             )
         )
 
-        self.sparse_retriever.k = 4
+        self.sparse_retriever.k = 5
 
         
 
@@ -292,39 +322,84 @@ class VectorStore:
 
     
 
-    def get_retriever(self):
-        """Return hybrid retriever."""
+    def get_retriever(self, k: int = 2):
+        """Return hybrid retriever with reranking applied on invoke."""
 
         if self.hybrid_retriever is None:
 
             raise ValueError(
                 "Hybrid retriever not initialized."
-            )
-
-        return self.hybrid_retriever
-
+    )
     
+        return RerankingRetriever(
+            base_retriever=self.hybrid_retriever,
+            vector_store=self,
+            k=k,
+    )    
+
+
+
+    def _rerank(
+    self,
+    query: str,
+    documents: List[Document],
+    k: int,
+    min_score: float = 0.0,
+       ) -> List[Document]:
+       """Rerank retrieved documents using a cross-encoder."""
+
+       if not documents:
+           return []
+
+       pairs = [
+           (query, document.page_content)
+           for document in documents
+       ]
+
+       scores = self.reranker.predict(pairs)
+
+       ranked_documents = sorted(
+           zip(scores, documents),
+           key=lambda item: item[0],
+           reverse=True,
+       )
+   
+       print(
+           "Rerank scores:",
+           [round(float(score), 4) for score, _ in ranked_documents],
+       )
+
+       filtered = [
+           document
+           for score, document in ranked_documents
+           if score >= min_score
+       ]
+
+       return filtered[:k]
 
     def retrieve(
-        self,
-        query: str,
-        k: int = 4,
-    ) -> List[Document]:
-        """Retrieve documents using hybrid search."""
+       self,
+       query: str,
+       k: int = 2,
+       ) -> List[Document]:
+       """Retrieve and rerank documents."""
 
-        if self.hybrid_retriever is None:
+       if self.hybrid_retriever is None:
+           raise ValueError(
+               "Hybrid retriever not initialized."
+           )
 
-            raise ValueError(
-                "Hybrid retriever not initialized."
-            )
+       documents = (
+           self.hybrid_retriever.invoke(
+               query
+           )
+       )
 
-        documents = (
-            self.hybrid_retriever.invoke(
-                query
-            )
-        )
-
-        return documents[:k]
+       return self._rerank(
+           query=query,
+           documents=documents,
+           k=k,
+       )
 
     
 
@@ -341,3 +416,5 @@ class VectorStore:
             return len(
                 self.bm25_documents
             )
+
+        

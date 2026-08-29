@@ -278,7 +278,7 @@ class RAGService:
 
         self.doc_processor = DocumentProcessor(
             model_name="all-MiniLM-L6-v2",
-            threshold=0.3,
+            threshold=0.6,
         )
 
         # -----------------------------------------------------
