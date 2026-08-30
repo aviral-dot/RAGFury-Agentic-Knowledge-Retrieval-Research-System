@@ -60,11 +60,7 @@ def update_retrieval_span(
     update_current_span(
         test_case=LLMTestCase(
             input=query,
-            actual_output=(
-                "\n\n".join(
-                    retrieved_context
-                )
-            ),
+            actual_output=("\n\n".join(retrieved_context)),
             expected_output=expected_output,
             retrieval_context=retrieved_context,
         )

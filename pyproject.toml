@@ -22,12 +22,23 @@ dependencies = [
     "redis>=8.1.0",
     "fastapi>=0.141.1",
     "uvicorn[standard]>=0.52.3",
-    "jsonpatch>=1.33",
+    "jsonpatch==1.33",
     "langchain-chroma>=0.2.6",
     "rank-bm25>=0.2.2",
     "mem0ai>=2.0.18",
     "google-genai>=2.18.1",
+    "langgraph-checkpoint-postgres",
+    "psycopg[binary,pool]",
     "deepeval>=4.2.0",
     "langchain-openai>=0.3.35",
     "nltk>=3.10.3",
+    "nemoguardrails>=0.24.0",
+    "rq>=2.11.0",
+    "langgraph-cli[inmem]>=0.4.13",
+    "langchain-classic>=1.0.8",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.5",
 ]

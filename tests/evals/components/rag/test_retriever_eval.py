@@ -1,7 +1,6 @@
 """Component-level evaluation for the RAG retriever."""
 
 import pytest
-
 from deepeval import assert_test
 from deepeval.dataset import Golden
 from deepeval.tracing import observe
@@ -31,9 +30,7 @@ class RetrieverComponent:
     ):
         self.rag_nodes = rag_nodes
 
-    @observe(
-        metrics=get_retrieval_metrics()
-    )
+    @observe(metrics=get_retrieval_metrics())
     def retrieve(
         self,
         query: str,
@@ -47,15 +44,9 @@ class RetrieverComponent:
             "question": query,
         }
 
-        result = self.rag_nodes.retrieve_docs(
-            state
-        )
+        result = self.rag_nodes.retrieve_docs(state)
 
-        retrieved_context = (
-            documents_to_context(
-                result["retrieved_docs"]
-            )
-        )
+        retrieved_context = documents_to_context(result["retrieved_docs"])
 
         update_retrieval_span(
             query=query,
@@ -71,9 +62,7 @@ def retriever_component():
 
     rag_nodes = build_rag_nodes()
 
-    return RetrieverComponent(
-        rag_nodes=rag_nodes
-    )
+    return RetrieverComponent(rag_nodes=rag_nodes)
 
 
 @pytest.mark.parametrize(
@@ -92,9 +81,7 @@ def test_retriever_component(
     the active golden.
     """
 
-    retriever_component.retrieve(
-        golden.input
-    )
+    retriever_component.retrieve(golden.input)
 
     assert_test(
         golden=golden,

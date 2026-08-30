@@ -30,3 +30,7 @@ qdrant-client
 google-genai
 
 jsonpatch
+
+
+"langgraph-checkpoint-postgres",
+"psycopg[binary,pool]",

@@ -36,10 +36,7 @@ class RedisMemory:
             -1,
         )
 
-        return [
-            json.loads(message)
-            for message in messages
-        ]
+        return [json.loads(message) for message in messages]
 
     def add_message(
         self,
@@ -95,9 +92,7 @@ class RedisMemory:
         conversation_id: str,
     ) -> None:
 
-        self.client.delete(
-            self._key(user_id, conversation_id)
-        )
+        self.client.delete(self._key(user_id, conversation_id))
 
     def health_check(self) -> bool:
         return bool(self.client.ping())

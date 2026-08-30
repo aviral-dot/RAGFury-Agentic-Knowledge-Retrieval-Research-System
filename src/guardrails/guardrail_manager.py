@@ -1,10 +1,9 @@
-from pathlib import Path
 import os
+from pathlib import Path
 from typing import Any, Dict, List
 
 from dotenv import load_dotenv
-from nemoguardrails import RailsConfig, LLMRails
-
+from nemoguardrails import LLMRails, RailsConfig
 
 # ============================================================
 # PROJECT CONFIGURATION
@@ -18,9 +17,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 
 if not NVIDIA_API_KEY:
-    raise RuntimeError(
-        "NVIDIA_API_KEY is missing from .env"
-    )
+    raise RuntimeError("NVIDIA_API_KEY is missing from .env")
 
 
 # ============================================================
@@ -29,9 +26,7 @@ if not NVIDIA_API_KEY:
 
 GUARDRAIL_DIR = Path(__file__).resolve().parent
 
-config = RailsConfig.from_path(
-    str(GUARDRAIL_DIR)
-)
+config = RailsConfig.from_path(str(GUARDRAIL_DIR))
 
 rails = LLMRails(config)
 
@@ -39,6 +34,7 @@ rails = LLMRails(config)
 # ============================================================
 # INPUT GUARDRAIL
 # ============================================================
+
 
 async def check_input(
     text: str,
@@ -55,7 +51,6 @@ async def check_input(
         return False
 
     try:
-
         print("\n" + "=" * 70)
         print("INPUT GUARDRAIL")
         print("=" * 70)
@@ -77,34 +72,21 @@ async def check_input(
         # ----------------------------------------------------
 
         if isinstance(result, dict):
-
             if result.get("role") == "exception":
-
-                print(
-                    "🚫 INPUT BLOCKED"
-                )
+                print("🚫 INPUT BLOCKED")
 
                 return False
 
-        print(
-            "✅ INPUT PASSED"
-        )
+        print("✅ INPUT PASSED")
 
         return True
 
     except Exception as exc:
+        print("\n🚨 INPUT GUARDRAIL ERROR")
 
-        print(
-            "\n🚨 INPUT GUARDRAIL ERROR"
-        )
+        print(f"TYPE: {type(exc).__name__}")
 
-        print(
-            f"TYPE: {type(exc).__name__}"
-        )
-
-        print(
-            f"MESSAGE: {exc}"
-        )
+        print(f"MESSAGE: {exc}")
 
         # Fail closed.
         return False
@@ -113,6 +95,7 @@ async def check_input(
 # ============================================================
 # RETRIEVED DOCUMENT GUARDRAIL
 # ============================================================
+
 
 def check_retrieved_documents(
     documents: List[Any],
@@ -136,16 +119,12 @@ def check_retrieved_documents(
     # --------------------------------------------------------
 
     if not documents:
-
         return {
             "safe": True,
-            "reason": (
-                "No documents were retrieved."
-            ),
+            "reason": ("No documents were retrieved."),
         }
 
     try:
-
         print("\n" + "=" * 70)
         print("RETRIEVAL SECURITY GUARDRAIL")
         print("=" * 70)
@@ -160,53 +139,37 @@ def check_retrieved_documents(
             documents,
             start=1,
         ):
-
             if hasattr(
                 document,
                 "page_content",
             ):
-
-                content = (
-                    document.page_content
-                )
+                content = document.page_content
 
             else:
-
                 content = str(document)
 
             if not content or not content.strip():
                 continue
 
-            document_contents.append(
-                f"""
+            document_contents.append(f"""
 DOCUMENT {index}
 ---------------
 {content}
-"""
-            )
+""")
 
         # ----------------------------------------------------
         # Nothing meaningful to inspect
         # ----------------------------------------------------
 
         if not document_contents:
-
             return {
                 "safe": True,
-                "reason": (
-                    "Retrieved documents contained "
-                    "no text to inspect."
-                ),
+                "reason": ("Retrieved documents contained no text to inspect."),
             }
 
-        combined_documents = "\n".join(
-            document_contents
-        )
+        combined_documents = "\n".join(document_contents)
 
-        print(
-            f"📄 Documents inspected: "
-            f"{len(document_contents)}"
-        )
+        print(f"📄 Documents inspected: {len(document_contents)}")
 
         # ----------------------------------------------------
         # IMPORTANT
@@ -243,9 +206,7 @@ DOCUMENT {index}
             ]
         )
 
-        print(
-            "RETRIEVAL GUARDRAIL RESULT:"
-        )
+        print("RETRIEVAL GUARDRAIL RESULT:")
 
         print(result)
 
@@ -264,7 +225,6 @@ DOCUMENT {index}
         # ----------------------------------------------------
 
         if status is not None:
-
             status_value = getattr(
                 status,
                 "value",
@@ -272,28 +232,20 @@ DOCUMENT {index}
             )
 
             if str(status_value).lower() == "blocked":
-
                 rail_name = getattr(
                     result,
                     "rail",
                     None,
                 )
 
-                reason = (
-                    "Retrieved document failed "
-                    "the security guardrail."
-                )
+                reason = "Retrieved document failed the security guardrail."
 
                 if rail_name:
-
                     reason = (
-                        "Retrieved document was blocked "
-                        f"by security rail: {rail_name}"
+                        f"Retrieved document was blocked by security rail: {rail_name}"
                     )
 
-                print(
-                    "🚫 RETRIEVED DOCUMENT BLOCKED"
-                )
+                print("🚫 RETRIEVED DOCUMENT BLOCKED")
 
                 return {
                     "safe": False,
@@ -305,50 +257,31 @@ DOCUMENT {index}
         # ----------------------------------------------------
 
         if isinstance(result, dict):
-
             if result.get("role") == "exception":
-
-                print(
-                    "🚫 RETRIEVED DOCUMENT BLOCKED"
-                )
+                print("🚫 RETRIEVED DOCUMENT BLOCKED")
 
                 return {
                     "safe": False,
-                    "reason": (
-                        "Retrieved document failed "
-                        "the security guardrail."
-                    ),
+                    "reason": ("Retrieved document failed the security guardrail."),
                 }
 
         # ----------------------------------------------------
         # Passed
         # ----------------------------------------------------
 
-        print(
-            "✅ RETRIEVED DOCUMENTS PASSED"
-        )
+        print("✅ RETRIEVED DOCUMENTS PASSED")
 
         return {
             "safe": True,
-            "reason": (
-                "Retrieved documents passed "
-                "the security guardrail."
-            ),
+            "reason": ("Retrieved documents passed the security guardrail."),
         }
 
     except Exception as exc:
+        print("\n🚨 RETRIEVED DOCUMENT GUARDRAIL ERROR")
 
-        print(
-            "\n🚨 RETRIEVED DOCUMENT GUARDRAIL ERROR"
-        )
+        print(f"TYPE: {type(exc).__name__}")
 
-        print(
-            f"TYPE: {type(exc).__name__}"
-        )
-
-        print(
-            f"MESSAGE: {exc}"
-        )
+        print(f"MESSAGE: {exc}")
 
         # ----------------------------------------------------
         # FAIL CLOSED
@@ -356,16 +289,14 @@ DOCUMENT {index}
 
         return {
             "safe": False,
-            "reason": (
-                "Retrieved document security "
-                "validation failed."
-            ),
+            "reason": ("Retrieved document security validation failed."),
         }
 
 
 # ============================================================
 # OUTPUT GUARDRAIL
 # ============================================================
+
 
 async def check_output(
     text: str,
@@ -383,7 +314,6 @@ async def check_output(
         return False
 
     try:
-
         print("\n" + "=" * 70)
         print("OUTPUT GUARDRAIL")
         print("=" * 70)
@@ -405,34 +335,21 @@ async def check_output(
         # ----------------------------------------------------
 
         if isinstance(result, dict):
-
             if result.get("role") == "exception":
-
-                print(
-                    "🚫 OUTPUT BLOCKED"
-                )
+                print("🚫 OUTPUT BLOCKED")
 
                 return False
 
-        print(
-            "✅ OUTPUT PASSED"
-        )
+        print("✅ OUTPUT PASSED")
 
         return True
 
     except Exception as exc:
+        print("\n🚨 OUTPUT GUARDRAIL ERROR")
 
-        print(
-            "\n🚨 OUTPUT GUARDRAIL ERROR"
-        )
+        print(f"TYPE: {type(exc).__name__}")
 
-        print(
-            f"TYPE: {type(exc).__name__}"
-        )
-
-        print(
-            f"MESSAGE: {exc}"
-        )
+        print(f"MESSAGE: {exc}")
 
         # Fail closed.
         return False

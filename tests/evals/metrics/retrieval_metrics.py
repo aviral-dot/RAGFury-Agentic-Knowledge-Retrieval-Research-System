@@ -1,14 +1,13 @@
 """DeepEval metrics for RAG retrieval evaluation."""
 
 from deepeval.metrics import (
-    ContextualPrecisionMetric,
-    ContextualRecallMetric,
     ContextualRelevancyMetric,
 )
-from tests.evals.helpers.eval_models  import create_eval_model
 
+from tests.evals.helpers.eval_models import create_eval_model
 
 eval_model = create_eval_model()
+
 
 def get_retrieval_metrics():
     """
@@ -19,7 +18,7 @@ def get_retrieval_metrics():
     return [
         ContextualRelevancyMetric(
             threshold=0.2,
-            model = eval_model,
+            model=eval_model,
             include_reason=True,
         ),
         # ContextualRecallMetric(

@@ -1,62 +1,118 @@
 """Document grading nodes for the Agentic RAG workflow."""
 
+import logging
+import time
+
 from pydantic import BaseModel, Field
 
 from src.state.rag_state import RAGState
+from src.utils.loggers import (
+    configure_logging,
+    get_logger,
+    log_event,
+)
+
+configure_logging()
+
+logger = get_logger(__name__)
 
 
 class DocumentGrade(BaseModel):
     """Structured output from the document relevance grader."""
 
     relevant: bool = Field(
-        description="Whether the retrieved documents are relevant "
-                    "to the user's question."
+        description=(
+            "Whether the retrieved documents are relevant to the user's question."
+        )
     )
 
-    reason: str = Field(
-        description="Brief explanation for the relevance decision."
-    )
+    reason: str = Field(description=("Brief explanation for the relevance decision."))
 
 
 class GradingNodes:
     """Nodes responsible for grading retrieved documents."""
 
-    def __init__(self, llm):
+    def __init__(
+        self,
+        llm,
+    ):
         """
         Initialize grading nodes.
 
         Args:
-            llm: Chat model used for document grading.
+            llm:
+                Chat model used for document grading.
         """
+
         self.llm = llm
 
-        self.grader = llm.with_structured_output(
-            DocumentGrade
+        self.grader = llm.with_structured_output(DocumentGrade)
+
+        log_event(
+            logger,
+            level=logging.DEBUG,
+            event="grading.nodes.initialized",
+            component="GradingNodes",
+            structured_output=True,
         )
 
-    def grade_documents(self, state: RAGState) -> dict:
+    # =========================================================
+    # DOCUMENT GRADING
+    # =========================================================
+
+    def grade_documents(
+        self,
+        state: RAGState,
+    ) -> dict:
         """
         Grade whether retrieved documents are relevant
         to the user's question.
         """
 
-        print("---GRADING DOCUMENTS---")
+        start_time = time.perf_counter()
 
         question = state["question"]
-        documents = state.get("retrieved_docs", [])
 
-        if not documents:
-            return {
-                "document_relevance": False,
-                "grade_reason": "No documents were retrieved.",
-            }
-
-        context = "\n\n".join(
-            doc.page_content
-            for doc in documents
+        documents = state.get(
+            "retrieved_docs",
+            [],
         )
 
-        prompt = f"""
+        document_count = len(documents)
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="rag.grading.started",
+            document_count=document_count,
+        )
+
+        # -----------------------------------------------------
+        # NO DOCUMENTS
+        # -----------------------------------------------------
+
+        if not documents:
+            log_event(
+                logger,
+                level=logging.WARNING,
+                event="rag.grading.skipped",
+                reason="no_documents",
+                document_count=0,
+            )
+
+            return {
+                "document_relevance": False,
+                "grade_reason": ("No documents were retrieved."),
+            }
+
+        # -----------------------------------------------------
+        # BUILD CONTEXT
+        # -----------------------------------------------------
+
+        try:
+            context = "\n\n".join(doc.page_content for doc in documents)
+
+            prompt = f"""
 You are a document relevance grader for a Retrieval-Augmented
 Generation (RAG) system.
 
@@ -96,12 +152,113 @@ Judge based on meaning, not exact wording.
 Return a brief reason explaining your decision.
 """
 
-        result = self.grader.invoke(prompt)
+        except Exception as exc:
+            elapsed = (time.perf_counter() - start_time) * 1000
 
-        print(f"Relevant: {result.relevant}")
-        print(f"Reason: {result.reason}")
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="rag.grading.prompt_build.failed",
+                document_count=document_count,
+                error_type=type(exc).__name__,
+                duration_ms=round(
+                    elapsed,
+                    2,
+                ),
+            )
+
+            logger.exception(
+                "Failed to build document grading prompt",
+            )
+
+            raise
+
+        # -----------------------------------------------------
+        # LLM GRADING
+        # -----------------------------------------------------
+
+        llm_start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.DEBUG,
+            event="rag.grading.llm.started",
+            document_count=document_count,
+        )
+
+        try:
+            result = self.grader.invoke(prompt)
+
+        except Exception as exc:
+            llm_elapsed = (time.perf_counter() - llm_start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="rag.grading.llm.failed",
+                document_count=document_count,
+                error_type=type(exc).__name__,
+                duration_ms=round(
+                    llm_elapsed,
+                    2,
+                ),
+            )
+
+            logger.exception(
+                "Document relevance grading failed",
+            )
+
+            raise
+
+        llm_elapsed = (time.perf_counter() - llm_start_time) * 1000
+
+        # -----------------------------------------------------
+        # STRUCTURED RESPONSE VALIDATION
+        # -----------------------------------------------------
+
+        if not isinstance(
+            result,
+            DocumentGrade,
+        ):
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="rag.grading.invalid_response",
+                document_count=document_count,
+                response_type=type(result).__name__,
+                llm_duration_ms=round(
+                    llm_elapsed,
+                    2,
+                ),
+            )
+
+            raise ValueError("Document grader returned an invalid structured response.")
+
+        # -----------------------------------------------------
+        # GRADING RESULT
+        # -----------------------------------------------------
+
+        relevance = result.relevant
+
+        total_elapsed = (time.perf_counter() - start_time) * 1000
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="rag.grading.completed",
+            document_count=document_count,
+            relevant=relevance,
+            llm_duration_ms=round(
+                llm_elapsed,
+                2,
+            ),
+            duration_ms=round(
+                total_elapsed,
+                2,
+            ),
+        )
 
         return {
-            "document_relevance": result.relevant,
+            "document_relevance": relevance,
             "grade_reason": result.reason,
         }

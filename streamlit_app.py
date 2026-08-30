@@ -5,7 +5,6 @@ import time
 import requests
 import streamlit as st
 
-
 API_URL = "http://127.0.0.1:8000"
 
 
@@ -83,7 +82,6 @@ def check_api_health():
     """
 
     try:
-
         response = requests.get(
             f"{API_URL}/health",
             timeout=5,
@@ -92,7 +90,6 @@ def check_api_health():
         return response.status_code == 200
 
     except requests.RequestException:
-
         return False
 
 
@@ -120,10 +117,7 @@ def ask_backend(question: str):
     }
 
     if st.session_state.conversation_id:
-
-        payload["conversation_id"] = (
-            st.session_state.conversation_id
-        )
+        payload["conversation_id"] = st.session_state.conversation_id
 
     response = requests.post(
         f"{API_URL}/api/v1/query",
@@ -135,15 +129,10 @@ def ask_backend(question: str):
 
     result = response.json()
 
-    returned_conversation_id = result.get(
-        "conversation_id"
-    )
+    returned_conversation_id = result.get("conversation_id")
 
     if returned_conversation_id:
-
-        st.session_state.conversation_id = (
-            returned_conversation_id
-        )
+        st.session_state.conversation_id = returned_conversation_id
 
     return result
 
@@ -154,7 +143,6 @@ def display_route(route: str):
     """
 
     if route == "rag":
-
         st.info(
             "📄 **Source: Company Documents**\n\n"
             "The routing agent selected the "
@@ -162,7 +150,6 @@ def display_route(route: str):
         )
 
     elif route == "chat":
-
         st.info(
             "💬 **Source: Chat Agent**\n\n"
             "The routing agent selected the "
@@ -170,10 +157,7 @@ def display_route(route: str):
         )
 
     elif route:
-
-        st.info(
-            f"🤖 **Agent Route:** `{route}`"
-        )
+        st.info(f"🤖 **Agent Route:** `{route}`")
 
 
 def display_rag_details(result):
@@ -194,32 +178,19 @@ def display_rag_details(result):
         [],
     )
 
-    document_relevance = result.get(
-        "document_relevance"
-    )
+    document_relevance = result.get("document_relevance")
 
-    grade_reason = result.get(
-        "grade_reason"
-    )
+    grade_reason = result.get("grade_reason")
 
-    retrieval_attempts = result.get(
-        "retrieval_attempts"
-    )
+    retrieval_attempts = result.get("retrieval_attempts")
 
     if documents:
-
-        with st.expander(
-            f"📚 Retrieved Documents ({len(documents)})"
-        ):
-
+        with st.expander(f"📚 Retrieved Documents ({len(documents)})"):
             for index, document in enumerate(
                 documents,
                 start=1,
             ):
-
-                st.markdown(
-                    f"### Document {index}"
-                )
+                st.markdown(f"### Document {index}")
 
                 content = document.get(
                     "content",
@@ -232,50 +203,30 @@ def display_rag_details(result):
                 )
 
                 if content:
-
-                    st.markdown(
-                        content
-                    )
+                    st.markdown(content)
 
                 if metadata:
-
-                    st.caption(
-                        f"Metadata: {metadata}"
-                    )
+                    st.caption(f"Metadata: {metadata}")
 
                 if index < len(documents):
-
                     st.divider()
 
-    if (
-        document_relevance is not None
-        or grade_reason
-    ):
-
-        with st.expander(
-            "🧠 Document Grading"
-        ):
-
+    if document_relevance is not None or grade_reason:
+        with st.expander("🧠 Document Grading"):
             if document_relevance is not None:
-
                 st.write(
                     "Relevant:",
                     document_relevance,
                 )
 
             if grade_reason:
-
                 st.write(
                     "Reason:",
                     grade_reason,
                 )
 
     if retrieval_attempts is not None:
-
-        st.caption(
-            f"🔄 Retrieval attempts: "
-            f"{retrieval_attempts}"
-        )
+        st.caption(f"🔄 Retrieval attempts: {retrieval_attempts}")
 
 
 def display_chat_details(result):
@@ -288,23 +239,15 @@ def display_chat_details(result):
     if route != "chat":
         return
 
-    memories = result.get(
-        "relevant_memories"
-    )
+    memories = result.get("relevant_memories")
 
     if memories:
-
-        with st.expander(
-            "🧠 Long-Term Memory Used"
-        ):
-
+        with st.expander("🧠 Long-Term Memory Used"):
             for memory in memories:
-
                 if isinstance(
                     memory,
                     dict,
                 ):
-
                     text = memory.get(
                         "memory",
                         memory.get(
@@ -314,20 +257,13 @@ def display_chat_details(result):
                     )
 
                 else:
-
                     text = str(memory)
 
                 if text:
-
-                    st.markdown(
-                        f"- {text}"
-                    )
+                    st.markdown(f"- {text}")
 
     else:
-
-        st.caption(
-            "🧠 No relevant long-term memories found."
-        )
+        st.caption("🧠 No relevant long-term memories found.")
 
 
 def display_history():
@@ -336,39 +272,22 @@ def display_history():
     """
 
     if not st.session_state.history:
-
         return
 
     st.markdown("---")
 
-    st.markdown(
-        "### 📜 Recent Conversation"
-    )
+    st.markdown("### 📜 Recent Conversation")
 
-    for item in reversed(
-        st.session_state.history[-5:]
-    ):
-
+    for item in reversed(st.session_state.history[-5:]):
         with st.container():
+            st.markdown(f"**Q:** {item['question']}")
 
-            st.markdown(
-                f"**Q:** {item['question']}"
-            )
-
-            answer_preview = item[
-                "answer"
-            ]
+            answer_preview = item["answer"]
 
             if len(answer_preview) > 200:
+                answer_preview = answer_preview[:200] + "..."
 
-                answer_preview = (
-                    answer_preview[:200]
-                    + "..."
-                )
-
-            st.markdown(
-                f"**A:** {answer_preview}"
-            )
+            st.markdown(f"**A:** {answer_preview}")
 
             route = item.get(
                 "route",
@@ -376,27 +295,15 @@ def display_history():
             )
 
             if route == "rag":
-
-                st.caption(
-                    "📄 Source: Company Documents"
-                )
+                st.caption("📄 Source: Company Documents")
 
             elif route == "chat":
-
-                st.caption(
-                    "💬 Source: Chat Agent"
-                )
+                st.caption("💬 Source: Chat Agent")
 
             else:
+                st.caption(f"🤖 Route: {route}")
 
-                st.caption(
-                    f"🤖 Route: {route}"
-                )
-
-            st.caption(
-                f"⏱️ Response time: "
-                f"{item['time']:.2f}s"
-            )
+            st.caption(f"⏱️ Response time: {item['time']:.2f}s")
 
 
 def main():
@@ -408,9 +315,7 @@ def main():
 
     st.title("🔍 RAGFury")
 
-    st.subheader(
-        "Agentic Knowledge Retrieval & Conversational AI"
-    )
+    st.subheader("Agentic Knowledge Retrieval & Conversational AI")
 
     st.markdown(
         """
@@ -423,33 +328,19 @@ def main():
     )
 
     if check_api_health():
-
-        st.success(
-            "🟢 RAGFury API is online"
-        )
+        st.success("🟢 RAGFury API is online")
 
     else:
+        st.error("🔴 RAGFury API is offline")
 
-        st.error(
-            "🔴 RAGFury API is offline"
-        )
-
-        st.info(
-            "Start the FastAPI backend with:\n\n"
-            "`uvicorn api.main:app --reload`"
-        )
+        st.info("Start the FastAPI backend with:\n\n`uvicorn api.main:app --reload`")
 
         return
 
     with st.sidebar:
+        st.header("💬 Conversation")
 
-        st.header(
-            "💬 Conversation"
-        )
-
-        st.caption(
-            "User ID"
-        )
+        st.caption("User ID")
 
         user_id = st.text_input(
             "Enter your User ID",
@@ -461,29 +352,19 @@ def main():
         user_id = user_id.strip()
 
         if user_id != st.session_state.user_id:
-
             st.session_state.user_id = user_id
 
             st.session_state.conversation_id = None
 
             st.session_state.history = []
 
-        st.caption(
-            "Current conversation"
-        )
+        st.caption("Current conversation")
 
         if st.session_state.conversation_id:
-
-            st.code(
-                st.session_state.conversation_id
-            )
+            st.code(st.session_state.conversation_id)
 
         else:
-
-            st.info(
-                "Will be generated automatically "
-                "when you send your first message."
-            )
+            st.info("Will be generated automatically when you send your first message.")
 
         st.divider()
 
@@ -507,76 +388,46 @@ def main():
 
         st.divider()
 
-        if st.button(
-            "🆕 New Conversation"
-        ):
-
+        if st.button("🆕 New Conversation"):
             start_new_conversation()
 
             st.rerun()
 
     if not st.session_state.user_id:
-
         st.warning(
-            "👤 Please enter your User ID in the sidebar "
-            "before asking a question."
+            "👤 Please enter your User ID in the sidebar before asking a question."
         )
 
     st.markdown("---")
 
-    with st.form(
-        "search_form"
-    ):
-
+    with st.form("search_form"):
         question = st.text_input(
             "Ask RAGFury",
-            placeholder=(
-                "e.g. How much sick leave "
-                "can an employee take?"
-            ),
+            placeholder=("e.g. How much sick leave can an employee take?"),
         )
 
-        submit = st.form_submit_button(
-            "🤖 Ask Agent"
-        )
+        submit = st.form_submit_button("🤖 Ask Agent")
 
     if submit:
-
         if not st.session_state.user_id:
-
-            st.error(
-                "❌ Please enter a User ID "
-                "in the sidebar first."
-            )
+            st.error("❌ Please enter a User ID in the sidebar first.")
 
             return
 
         question = question.strip()
 
         if not question:
-
-            st.warning(
-                "Please enter a question."
-            )
+            st.warning("Please enter a question.")
 
             return
 
         start_time = time.time()
 
-        with st.spinner(
-            "🤔 Agent is processing your question..."
-        ):
-
+        with st.spinner("🤔 Agent is processing your question..."):
             try:
+                result = ask_backend(question)
 
-                result = ask_backend(
-                    question
-                )
-
-                elapsed_time = (
-                    time.time()
-                    - start_time
-                )
+                elapsed_time = time.time() - start_time
 
                 answer = result.get(
                     "answer",
@@ -588,15 +439,10 @@ def main():
                     "unknown",
                 )
 
-                conversation_id = result.get(
-                    "conversation_id"
-                )
+                conversation_id = result.get("conversation_id")
 
                 if conversation_id:
-
-                    st.session_state.conversation_id = (
-                        conversation_id
-                    )
+                    st.session_state.conversation_id = conversation_id
 
                 st.session_state.history.append(
                     {
@@ -607,71 +453,38 @@ def main():
                     }
                 )
 
-                st.markdown(
-                    "### 💡 Answer"
-                )
+                st.markdown("### 💡 Answer")
 
-                st.success(
-                    answer
-                )
+                st.success(answer)
 
-                display_route(
-                    route
-                )
+                display_route(route)
 
-                display_rag_details(
-                    result
-                )
+                display_rag_details(result)
 
-                display_chat_details(
-                    result
-                )
+                display_chat_details(result)
 
-                backend_time = result.get(
-                    "response_time"
-                )
+                backend_time = result.get("response_time")
 
                 if backend_time is not None:
+                    st.caption(f"⏱️ Backend response time: {backend_time:.2f}s")
 
-                    st.caption(
-                        f"⏱️ Backend response time: "
-                        f"{backend_time:.2f}s"
-                    )
-
-                st.caption(
-                    f"⏱️ Total UI response time: "
-                    f"{elapsed_time:.2f}s"
-                )
+                st.caption(f"⏱️ Total UI response time: {elapsed_time:.2f}s")
 
                 if st.session_state.conversation_id:
-
-                    st.caption(
-                        "💬 Conversation: "
-                        f"{st.session_state.conversation_id}"
-                    )
+                    st.caption(f"💬 Conversation: {st.session_state.conversation_id}")
 
             except requests.exceptions.Timeout:
-
-                st.error(
-                    "⏱️ Request timed out. "
-                    "The RAGFury pipeline took too long."
-                )
+                st.error("⏱️ Request timed out. The RAGFury pipeline took too long.")
 
             except requests.exceptions.ConnectionError:
-
-                st.error(
-                    "🔴 Could not connect to "
-                    "the FastAPI backend."
-                )
+                st.error("🔴 Could not connect to the FastAPI backend.")
 
             except requests.exceptions.HTTPError as exc:
-
                 # ------------------------------------------------
                 # Handle FastAPI HTTP errors cleanly
                 # ------------------------------------------------
 
                 try:
-
                     error_data = exc.response.json()
 
                     detail = error_data.get(
@@ -680,50 +493,34 @@ def main():
                     )
 
                 except Exception:
-
-                    detail = (
-                        "The request was rejected by the API."
-                    )
+                    detail = "The request was rejected by the API."
 
                 # ------------------------------------------------
                 # 400 = Safety / validation rejection
                 # ------------------------------------------------
 
                 if exc.response.status_code == 400:
-
-                    st.warning(
-                        f"🛡️ {detail}"
-                    )
+                    st.warning(f"🛡️ {detail}")
 
                 # ------------------------------------------------
                 # 503 = Backend / security service failure
                 # ------------------------------------------------
 
                 elif exc.response.status_code == 503:
-
-                    st.error(
-                        f"🚨 {detail}"
-                    )
+                    st.error(f"🚨 {detail}")
 
                 # ------------------------------------------------
                 # Other HTTP errors
                 # ------------------------------------------------
 
                 else:
-
-                    st.error(
-                        f"❌ {detail}"
-                    )
+                    st.error(f"❌ {detail}")
 
             except Exception as exc:
-
-                st.error(
-                    f"❌ Unexpected error: {exc}"
-                )
+                st.error(f"❌ Unexpected error: {exc}")
 
     display_history()
 
 
 if __name__ == "__main__":
-
     main()

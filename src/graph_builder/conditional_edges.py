@@ -18,7 +18,6 @@ def route_after_agent(state: RAGState) -> str:
     if not messages:
         return "end"
 
-   
     last_message = messages[-1]
 
     tool_calls = getattr(last_message, "tool_calls", None)
@@ -26,7 +25,6 @@ def route_after_agent(state: RAGState) -> str:
     if not tool_calls:
         return "end"
 
-  
     tool_call = tool_calls[0]
 
     tool_name = tool_call.get("name")

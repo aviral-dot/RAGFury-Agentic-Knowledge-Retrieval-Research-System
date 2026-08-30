@@ -1,6 +1,7 @@
 """Configuration module for Agentic RAG system"""
 
 import os
+
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 
@@ -23,7 +24,7 @@ class Config:
     # Default URLs
     DEFAULT_URLS = [
         "https://lilianweng.github.io/posts/2023-06-23-agent/",
-        "https://lilianweng.github.io/posts/2024-04-12-diffusion-video/"
+        "https://lilianweng.github.io/posts/2024-04-12-diffusion-video/",
     ]
 
     @classmethod
@@ -31,14 +32,8 @@ class Config:
         """Initialize and return the Groq LLM"""
 
         if not cls.GROQ_API_KEY:
-            raise ValueError(
-                "GROQ_API_KEY not found in environment variables."
-            )
+            raise ValueError("GROQ_API_KEY not found in environment variables.")
 
         return ChatGroq(
-            model=cls.LLM_MODEL,
-            groq_api_key=cls.GROQ_API_KEY,
-            temperature=0
+            model=cls.LLM_MODEL, groq_api_key=cls.GROQ_API_KEY, temperature=0
         )
-
-

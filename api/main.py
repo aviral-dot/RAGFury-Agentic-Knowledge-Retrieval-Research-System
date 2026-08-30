@@ -1,8 +1,8 @@
 """FastAPI backend for RAGFury."""
 
 import json
+import logging
 import time
-import traceback
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -10,29 +10,42 @@ from typing import Any, Dict, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from src.guardrails.exceptions import (
-    MaliciousDocumentError,
+from langgraph.checkpoint.postgres.aio import (
+    AsyncPostgresSaver,
 )
 
-from src.guardrails.guardrail_manager import (
-    check_input,
-    check_output,
+from api.schemas import (
+    HealthResponse,
+    QueryRequest,
+    QueryResponse,
+    RetrievedDocument,
+    SystemInfoResponse,
 )
-
+from src.checkpoint.postgres import (
+    get_checkpoint_database_url,
+)
 from src.config.config import Config
 from src.document_ingestion.document_processor import (
     DocumentProcessor,
 )
-from src.vectorstore.vectorstore import VectorStore
 from src.graph_builder.graph_builder import GraphBuilder
-
-from api.schemas import (
-    QueryRequest,
-    QueryResponse,
-    RetrievedDocument,
-    HealthResponse,
-    SystemInfoResponse,
+from src.guardrails.exceptions import (
+    MaliciousDocumentError,
 )
+from src.guardrails.guardrail_manager import (
+    check_input,
+    check_output,
+)
+from src.utils.loggers import (
+    configure_logging,
+    get_logger,
+    log_event,
+)
+from src.vectorstore.vectorstore import VectorStore
+
+configure_logging()
+
+logger = get_logger(__name__)
 
 
 # =============================================================
@@ -57,6 +70,13 @@ class RAGService:
         self.doc_processor = None
         self.vector_store = None
         self.graph_builder = None
+
+        # -----------------------------------------------------
+        # PostgreSQL LangGraph checkpointer
+        # -----------------------------------------------------
+
+        self.checkpointer = None
+
         self.graph = None
 
         self.num_chunks = 0
@@ -66,9 +86,7 @@ class RAGService:
         # Registry of PDFs that have already been processed
         # -----------------------------------------------------
 
-        self.processed_files_path = Path(
-            "storage/processed_files.json"
-        )
+        self.processed_files_path = Path("storage/processed_files.json")
 
         self.processed_files_path.parent.mkdir(
             parents=True,
@@ -88,13 +106,11 @@ class RAGService:
             return set()
 
         try:
-
             with open(
                 self.processed_files_path,
                 "r",
                 encoding="utf-8",
             ) as file:
-
                 data = json.load(file)
 
             return set(data)
@@ -103,25 +119,63 @@ class RAGService:
             json.JSONDecodeError,
             OSError,
         ) as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="ingestion.registry.load.failed",
+                registry_path=str(self.processed_files_path),
+                error_type=type(exc).__name__,
+            )
 
-            raise RuntimeError(
-                "Could not load processed file registry."
-            ) from exc
+            logger.exception(
+                "Failed to load processed file registry",
+            )
+
+            raise RuntimeError("Could not load processed file registry.") from exc
 
     def _save_processed_files(self) -> None:
         """Save processed PDF filenames."""
 
-        with open(
-            self.processed_files_path,
-            "w",
-            encoding="utf-8",
-        ) as file:
+        start_time = time.perf_counter()
 
-            json.dump(
-                sorted(self.processed_files),
-                file,
-                indent=2,
+        try:
+            with open(
+                self.processed_files_path,
+                "w",
+                encoding="utf-8",
+            ) as file:
+                json.dump(
+                    sorted(self.processed_files),
+                    file,
+                    indent=2,
+                )
+
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.DEBUG,
+                event="ingestion.registry.save.completed",
+                processed_file_count=len(self.processed_files),
+                duration_ms=round(
+                    elapsed,
+                    2,
+                ),
             )
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="ingestion.registry.save.failed",
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "Failed to save processed file registry",
+            )
+
+            raise
 
     # =========================================================
     # FIND NEW PDF FILES
@@ -132,15 +186,19 @@ class RAGService:
         Return only PDF files that have never been processed.
         """
 
-        pdf_files = sorted(
-            self.data_directory.glob("*.pdf")
-        )
+        pdf_files = sorted(self.data_directory.glob("*.pdf"))
 
         new_files = [
-            file
-            for file in pdf_files
-            if file.name not in self.processed_files
+            file for file in pdf_files if file.name not in self.processed_files
         ]
+
+        log_event(
+            logger,
+            level=logging.DEBUG,
+            event="ingestion.pdf.discovery.completed",
+            total_pdf_count=len(pdf_files),
+            new_pdf_count=len(new_files),
+        )
 
         return new_files
 
@@ -153,16 +211,25 @@ class RAGService:
         Detect and process only newly added PDFs.
         """
 
-        print(
-            "🔎 Checking for new PDF documents..."
+        start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="ingestion.sync.started",
         )
 
         # -----------------------------------------------------
         # Load registry
         # -----------------------------------------------------
 
-        self.processed_files = (
-            self._load_processed_files()
+        self.processed_files = self._load_processed_files()
+
+        log_event(
+            logger,
+            level=logging.DEBUG,
+            event="ingestion.registry.loaded",
+            processed_file_count=len(self.processed_files),
         )
 
         # -----------------------------------------------------
@@ -172,19 +239,36 @@ class RAGService:
         new_files = self._get_new_pdf_files()
 
         if not new_files:
-
-            print(
-                "✅ No new PDFs found. "
-                "Skipping document processing."
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="ingestion.sync.skipped",
+                reason="no_new_documents",
             )
 
-            # Load existing persistent vector store.
             self.vector_store.initialize()
+
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="ingestion.sync.completed",
+                new_pdf_count=0,
+                chunk_count=0,
+                duration_ms=round(
+                    elapsed,
+                    2,
+                ),
+            )
 
             return
 
-        print(
-            f"📚 Found {len(new_files)} new PDF(s)."
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="ingestion.pdf.discovery.completed",
+            new_pdf_count=len(new_files),
         )
 
         all_new_chunks = []
@@ -194,30 +278,91 @@ class RAGService:
         # -----------------------------------------------------
 
         for pdf_file in new_files:
+            pdf_start_time = time.perf_counter()
 
-            print(
-                f"\n📄 New document detected: "
-                f"{pdf_file.name}"
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="ingestion.pdf.processing.started",
+                filename=pdf_file.name,
             )
 
-            chunks = self.doc_processor.process_pdf(
-                pdf_file
-            )
+            try:
+                chunks = self.doc_processor.process_pdf(pdf_file)
+
+            except Exception as exc:
+                log_event(
+                    logger,
+                    level=logging.ERROR,
+                    event="ingestion.pdf.processing.failed",
+                    filename=pdf_file.name,
+                    error_type=type(exc).__name__,
+                )
+
+                logger.exception(
+                    "PDF processing failed",
+                )
+
+                raise
 
             all_new_chunks.extend(chunks)
+
+            pdf_elapsed = (time.perf_counter() - pdf_start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="ingestion.pdf.processing.completed",
+                filename=pdf_file.name,
+                chunk_count=len(chunks),
+                duration_ms=round(
+                    pdf_elapsed,
+                    2,
+                ),
+            )
 
         # -----------------------------------------------------
         # Add ONLY new chunks to vector store
         # -----------------------------------------------------
 
-        print(
-            f"\n🗂️ Adding "
-            f"{len(all_new_chunks)} new chunks "
-            f"to vector store..."
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="vectorstore.indexing.started",
+            chunk_count=len(all_new_chunks),
         )
 
-        self.vector_store.initialize(
-            new_documents=all_new_chunks
+        vector_start_time = time.perf_counter()
+
+        try:
+            self.vector_store.initialize(new_documents=all_new_chunks)
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="vectorstore.indexing.failed",
+                chunk_count=len(all_new_chunks),
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "Vector store indexing failed",
+            )
+
+            raise
+
+        vector_elapsed = (time.perf_counter() - vector_start_time) * 1000
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="vectorstore.indexing.completed",
+            chunk_count=len(all_new_chunks),
+            duration_ms=round(
+                vector_elapsed,
+                2,
+            ),
         )
 
         # -----------------------------------------------------
@@ -225,15 +370,22 @@ class RAGService:
         # -----------------------------------------------------
 
         for pdf_file in new_files:
-
-            self.processed_files.add(
-                pdf_file.name
-            )
+            self.processed_files.add(pdf_file.name)
 
         self._save_processed_files()
 
-        print(
-            "\n✅ Incremental ingestion complete."
+        elapsed = (time.perf_counter() - start_time) * 1000
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="ingestion.sync.completed",
+            new_pdf_count=len(new_files),
+            chunk_count=len(all_new_chunks),
+            duration_ms=round(
+                elapsed,
+                2,
+            ),
         )
 
     # =========================================================
@@ -241,10 +393,19 @@ class RAGService:
     # =========================================================
 
     def initialize(self) -> None:
-        """Initialize the complete RAGFury pipeline."""
+        """
+        Initialize the complete RAGFury pipeline.
 
-        print(
-            "\n🚀 Initializing RAGFury API..."
+        The PostgreSQL checkpointer must already be assigned
+        before this method is called.
+        """
+
+        start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="rag.initialization.started",
         )
 
         # -----------------------------------------------------
@@ -252,31 +413,74 @@ class RAGService:
         # -----------------------------------------------------
 
         if not self.data_directory.exists():
-
-            raise FileNotFoundError(
-                f"Data directory not found: "
-                f"{self.data_directory}"
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="rag.initialization.failed",
+                reason="data_directory_not_found",
+                data_directory=str(self.data_directory),
             )
+
+            raise FileNotFoundError(f"Data directory not found: {self.data_directory}")
 
         # -----------------------------------------------------
         # Load LLM
         # -----------------------------------------------------
 
-        print(
-            "🧠 Loading LLM..."
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="llm.initialization.started",
         )
 
-        self.llm = Config.get_llm()
+        llm_start_time = time.perf_counter()
+
+        try:
+            self.llm = Config.get_llm()
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="llm.initialization.failed",
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "LLM initialization failed",
+            )
+
+            raise
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="llm.initialization.completed",
+            duration_ms=round(
+                (time.perf_counter() - llm_start_time) * 1000,
+                2,
+            ),
+        )
 
         # -----------------------------------------------------
         # Document processor
         # -----------------------------------------------------
 
-        print(
-            "📄 Initializing document processor..."
+        log_event(
+            logger,
+            level=logging.INFO,
+            event=("document_processor.initialization.started"),
         )
 
         self.doc_processor = DocumentProcessor(
+            model_name="all-MiniLM-L6-v2",
+            threshold=0.6,
+        )
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event=("document_processor.initialization.completed"),
             model_name="all-MiniLM-L6-v2",
             threshold=0.6,
         )
@@ -285,11 +489,19 @@ class RAGService:
         # Vector store
         # -----------------------------------------------------
 
-        print(
-            "🔍 Initializing vector store..."
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="vectorstore.initialization.started",
         )
 
         self.vector_store = VectorStore()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="vectorstore.initialization.completed",
+        )
 
         # -----------------------------------------------------
         # Incremental document synchronization
@@ -301,79 +513,203 @@ class RAGService:
         # Number of stored chunks
         # -----------------------------------------------------
 
-        self.num_chunks = (
-            self.vector_store.get_document_count()
-        )
+        self.num_chunks = self.vector_store.get_document_count()
 
-        print(
-            f"📊 Total indexed chunks: "
-            f"{self.num_chunks}"
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="vectorstore.document_count.loaded",
+            indexed_chunk_count=self.num_chunks,
         )
 
         if self.num_chunks == 0:
-
-            raise ValueError(
-                "No indexed documents found."
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="rag.initialization.failed",
+                reason="no_indexed_documents",
             )
+
+            raise ValueError("No indexed documents found.")
 
         # -----------------------------------------------------
         # Build LangGraph
         # -----------------------------------------------------
 
-        print(
-            "🔗 Building LangGraph workflow..."
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="graph.build.started",
         )
 
         self.graph_builder = GraphBuilder(
-            retriever=(
-                self.vector_store.get_retriever()
-            ),
+            retriever=(self.vector_store.get_retriever()),
             llm=self.llm,
+            checkpointer=self.checkpointer,
         )
 
-        self.graph = (
-            self.graph_builder.build()
+        self.graph = self.graph_builder.build()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="graph.build.completed",
         )
 
         self.initialized = True
 
-        print(
-            "✅ RAGFury API initialized successfully!"
+        elapsed = (time.perf_counter() - start_time) * 1000
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="rag.initialization.completed",
+            indexed_chunk_count=self.num_chunks,
+            duration_ms=round(
+                elapsed,
+                2,
+            ),
         )
 
     # =========================================================
     # QUERY
     # =========================================================
 
-    def query(
+    async def query(
         self,
         question: str,
         user_id: str,
         conversation_id: str,
+        request_id: str,
     ) -> Dict[str, Any]:
-        """Execute a question through LangGraph."""
+        """
+        Execute a question through LangGraph.
+
+        The conversation ID is converted into a unique
+        LangGraph thread ID so checkpoints belonging to
+        different conversations remain isolated.
+        """
 
         if not self.initialized:
-
-            raise RuntimeError(
-                "RAGFury has not been initialized."
-            )
+            raise RuntimeError("RAGFury has not been initialized.")
 
         if self.graph is None:
+            raise RuntimeError("LangGraph is not available.")
 
-            raise RuntimeError(
-                "LangGraph is not available."
-            )
+        start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="graph.execution.started",
+            request_id=request_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+
+        # -----------------------------------------------------
+        # LangGraph thread ID
+        # -----------------------------------------------------
+        #
+        # This identifies the persistent execution thread
+        # inside PostgreSQL.
+        #
+        # Example:
+        #
+        # ragfury:user123:conversation_a81f9e
+        #
+        # -----------------------------------------------------
+
+        thread_id = f"ragfury:{user_id}:{conversation_id}"
+
+        log_event(
+            logger,
+            level=logging.DEBUG,
+            event="graph.thread.created",
+            request_id=request_id,
+            conversation_id=conversation_id,
+        )
+
+        # -----------------------------------------------------
+        # Initial graph state
+        # -----------------------------------------------------
 
         initial_state = {
             "question": question,
             "user_id": user_id,
             "conversation_id": conversation_id,
+            "request_id": request_id,
         }
 
-        return self.graph.invoke(
-            initial_state
+        # -----------------------------------------------------
+        # LangGraph checkpoint configuration
+        # -----------------------------------------------------
+        #
+        # IMPORTANT:
+        # thread_id does NOT belong inside RAGState.
+        #
+        # LangGraph uses this configurable value to identify
+        # which PostgreSQL checkpoint thread should be used.
+        #
+        # -----------------------------------------------------
+
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+            }
+        }
+
+        # -----------------------------------------------------
+        # Execute LangGraph asynchronously
+        # -----------------------------------------------------
+
+        try:
+            result = await self.graph.ainvoke(
+                initial_state,
+                config=config,
+            )
+
+        except Exception as exc:
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="graph.execution.failed",
+                request_id=request_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                duration_ms=round(
+                    elapsed,
+                    2,
+                ),
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "LangGraph execution failed",
+            )
+
+            raise
+
+        elapsed = (time.perf_counter() - start_time) * 1000
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="graph.execution.completed",
+            request_id=request_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            next_step=result.get("next_step"),
+            retrieval_attempts=result.get("retrieval_attempts"),
+            duration_ms=round(
+                elapsed,
+                2,
+            ),
         )
+
+        return result
 
 
 # =============================================================
@@ -382,9 +718,7 @@ class RAGService:
 
 DATA_DIRECTORY = Path("data")
 
-rag_service = RAGService(
-    data_directory=DATA_DIRECTORY
-)
+rag_service = RAGService(data_directory=DATA_DIRECTORY)
 
 
 # =============================================================
@@ -396,24 +730,145 @@ rag_service = RAGService(
 async def lifespan(
     app: FastAPI,
 ):
-    """Initialize RAGFury when FastAPI starts."""
+    """
+    Initialize RAGFury when FastAPI starts.
+
+    PostgreSQL checkpointer lifecycle:
+
+        FastAPI startup
+              ↓
+        Create AsyncPostgresSaver
+              ↓
+        Setup checkpoint tables
+              ↓
+        Inject checkpointer into RAGService
+              ↓
+        Initialize RAGFury
+              ↓
+        Application running
+              ↓
+        FastAPI shutdown
+              ↓
+        Close checkpointer
+    """
+
+    log_event(
+        logger,
+        level=logging.INFO,
+        event="application.startup.started",
+    )
+
+    database_url = None
+    checkpointer = None
 
     try:
+        # -----------------------------------------------------
+        # Get dedicated RAGFury checkpoint database
+        # -----------------------------------------------------
 
-        rag_service.initialize()
+        database_url = get_checkpoint_database_url()
 
-    except Exception as exc:
-
-        print(
-            f"❌ RAGFury initialization failed: "
-            f"{exc}"
+        log_event(
+            logger,
+            level=logging.INFO,
+            event=("checkpoint.database.connection.started"),
         )
 
-    yield
+        # -----------------------------------------------------
+        # Create PostgreSQL checkpointer
+        # -----------------------------------------------------
 
-    print(
-        "🛑 RAGFury API shutting down..."
-    )
+        async with AsyncPostgresSaver.from_conn_string(database_url) as checkpointer:
+            log_event(
+                logger,
+                level=logging.INFO,
+                event=("checkpoint.database.connection.completed"),
+            )
+
+            # -------------------------------------------------
+            # Create/check LangGraph checkpoint tables
+            # -------------------------------------------------
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="checkpoint.setup.started",
+            )
+
+            await checkpointer.setup()
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="checkpoint.setup.completed",
+            )
+
+            # -------------------------------------------------
+            # Inject checkpointer into RAG service
+            # -------------------------------------------------
+
+            rag_service.checkpointer = checkpointer
+
+            # -------------------------------------------------
+            # Initialize complete RAG pipeline
+            # -------------------------------------------------
+
+            try:
+                rag_service.initialize()
+
+            except Exception as exc:
+                log_event(
+                    logger,
+                    level=logging.ERROR,
+                    event="rag.initialization.failed",
+                    error_type=type(exc).__name__,
+                )
+
+                logger.exception(
+                    "RAGFury initialization failed",
+                )
+
+            # -------------------------------------------------
+            # Application runs while checkpointer context
+            # remains open.
+            # -------------------------------------------------
+
+            yield
+
+    except Exception as exc:
+        log_event(
+            logger,
+            level=logging.ERROR,
+            event="application.startup.failed",
+            component="postgresql_checkpointer",
+            error_type=type(exc).__name__,
+        )
+
+        logger.exception(
+            "PostgreSQL checkpoint initialization failed",
+        )
+
+        # -----------------------------------------------------
+        # Preserve the application's previous behavior:
+        # FastAPI can still start, but RAGFury remains
+        # uninitialized if its infrastructure failed.
+        # -----------------------------------------------------
+
+        yield
+
+    finally:
+        # -----------------------------------------------------
+        # Clear application references
+        # -----------------------------------------------------
+
+        rag_service.checkpointer = None
+        rag_service.graph = None
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="application.shutdown.completed",
+        )
 
 
 # =============================================================
@@ -422,10 +877,7 @@ async def lifespan(
 
 app = FastAPI(
     title="RAGFury API",
-    description=(
-        "Agentic Knowledge Retrieval & "
-        "Research System"
-    ),
+    description=("Agentic Knowledge Retrieval & Research System"),
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -480,7 +932,6 @@ async def health():
     """Return service health."""
 
     if rag_service.initialized:
-
         return HealthResponse(
             status="healthy",
             rag_initialized=True,
@@ -507,12 +958,8 @@ async def system_info():
     return SystemInfoResponse(
         name="RAGFury",
         version="1.0.0",
-        rag_initialized=(
-            rag_service.initialized
-        ),
-        document_chunks=(
-            rag_service.num_chunks
-        ),
+        rag_initialized=(rag_service.initialized),
+        document_chunks=(rag_service.num_chunks),
     )
 
 
@@ -530,6 +977,17 @@ async def query(
 ):
     """Execute a question through RAGFury."""
 
+    request_id = uuid.uuid4().hex
+
+    request_start_time = time.perf_counter()
+
+    log_event(
+        logger,
+        level=logging.INFO,
+        event="query.started",
+        request_id=request_id,
+    )
+
     # =========================================================
     # VALIDATE QUESTION
     # =========================================================
@@ -537,6 +995,13 @@ async def query(
     question = request.question.strip()
 
     if not question:
+        log_event(
+            logger,
+            level=logging.WARNING,
+            event="query.validation.failed",
+            request_id=request_id,
+            reason="empty_question",
+        )
 
         raise HTTPException(
             status_code=400,
@@ -547,33 +1012,53 @@ async def query(
     # INPUT GUARDRAIL
     # =========================================================
 
-    try:
+    guardrail_start_time = time.perf_counter()
 
-        input_allowed = await check_input(
-            question
-        )
+    log_event(
+        logger,
+        level=logging.INFO,
+        event="security.input.started",
+        request_id=request_id,
+    )
+
+    try:
+        input_allowed = await check_input(question)
 
     except Exception as exc:
+        log_event(
+            logger,
+            level=logging.ERROR,
+            event="security.input.failed",
+            request_id=request_id,
+            error_type=type(exc).__name__,
+        )
 
-        print(
-            f"🚨 Input guardrail failed: {exc}"
+        logger.exception(
+            "Input guardrail failed",
         )
 
         raise HTTPException(
             status_code=503,
-            detail=(
-                "Input security validation failed."
-            ),
+            detail=("Input security validation failed."),
         ) from exc
 
-    if not input_allowed:
+    input_guardrail_elapsed = (time.perf_counter() - guardrail_start_time) * 1000
 
+    log_event(
+        logger,
+        level=(logging.INFO if input_allowed else logging.WARNING),
+        event=("security.input.allowed" if input_allowed else "security.input.blocked"),
+        request_id=request_id,
+        duration_ms=round(
+            input_guardrail_elapsed,
+            2,
+        ),
+    )
+
+    if not input_allowed:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Your request was blocked by the "
-                "RAGFury safety policy."
-            ),
+            detail=("Your request was blocked by the RAGFury safety policy."),
         )
 
     # =========================================================
@@ -583,6 +1068,13 @@ async def query(
     user_id = request.user_id.strip()
 
     if not user_id:
+        log_event(
+            logger,
+            level=logging.WARNING,
+            event="query.validation.failed",
+            request_id=request_id,
+            reason="empty_user_id",
+        )
 
         raise HTTPException(
             status_code=400,
@@ -594,31 +1086,30 @@ async def query(
     # =========================================================
 
     if request.conversation_id:
-
-        conversation_id = (
-            request.conversation_id.strip()
-        )
+        conversation_id = request.conversation_id.strip()
 
         if not conversation_id:
+            log_event(
+                logger,
+                level=logging.WARNING,
+                event="query.validation.failed",
+                request_id=request_id,
+                reason="empty_conversation_id",
+            )
 
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "Conversation ID cannot "
-                    "be empty."
-                ),
+                detail=("Conversation ID cannot be empty."),
             )
 
     else:
+        conversation_id = f"conversation_{uuid.uuid4().hex[:12]}"
 
-        conversation_id = (
-            f"conversation_"
-            f"{uuid.uuid4().hex[:12]}"
-        )
-
-        print(
-            f"🆕 New conversation created: "
-            f"{conversation_id}"
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="conversation.created",
+            request_id=request_id,
         )
 
     # =========================================================
@@ -626,67 +1117,68 @@ async def query(
     # =========================================================
 
     if not rag_service.initialized:
+        log_event(
+            logger,
+            level=logging.ERROR,
+            event="query.rejected",
+            request_id=request_id,
+            reason="rag_not_initialized",
+        )
 
         raise HTTPException(
             status_code=503,
-            detail=(
-                "RAGFury is not initialized. "
-                "Check the API startup logs."
-            ),
+            detail=("RAGFury is not initialized. Check the API startup logs."),
         )
 
     # =========================================================
     # EXECUTE GRAPH
     # =========================================================
 
-    start_time = time.perf_counter()
-
     try:
-
-        result = rag_service.query(
+        result = await rag_service.query(
             question=question,
             user_id=user_id,
             conversation_id=conversation_id,
+            request_id=request_id,
         )
 
     except MaliciousDocumentError as exc:
+        log_event(
+            logger,
+            level=logging.WARNING,
+            event="security.document.blocked",
+            request_id=request_id,
+            error_type=type(exc).__name__,
+        )
 
-       print(
-        f"🚫 MALICIOUS DOCUMENT BLOCKED: {exc}"
-       )
+        logger.warning(
+            "Malicious document blocked",
+        )
 
-       raise HTTPException(
-        status_code=400,
-        detail=str(exc),
-       ) from exc   
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
     except Exception as exc:
+        elapsed = (time.perf_counter() - request_start_time) * 1000
 
-        print(
-            "\n" + "=" * 70
+        log_event(
+            logger,
+            level=logging.ERROR,
+            event="query.failed",
+            request_id=request_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            duration_ms=round(
+                elapsed,
+                2,
+            ),
+            error_type=type(exc).__name__,
         )
 
-        print(
-            "❌ QUERY PROCESSING FAILED"
-        )
-
-        print(
-            "=" * 70
-        )
-
-        print(
-            f"Error type: "
-            f"{type(exc).__name__}"
-        )
-
-        print(
-            f"Error: {exc}"
-        )
-
-        traceback.print_exc()
-
-        print(
-            "=" * 70 + "\n"
+        logger.exception(
+            "Query processing failed",
         )
 
         raise HTTPException(
@@ -703,43 +1195,65 @@ async def query(
         "",
     )
 
-    try:
+    output_guardrail_start_time = time.perf_counter()
 
-        output_allowed = await check_output(
-            answer
-        )
+    log_event(
+        logger,
+        level=logging.INFO,
+        event="security.output.started",
+        request_id=request_id,
+    )
+
+    try:
+        output_allowed = await check_output(answer)
 
     except Exception as exc:
+        log_event(
+            logger,
+            level=logging.ERROR,
+            event="security.output.failed",
+            request_id=request_id,
+            error_type=type(exc).__name__,
+        )
 
-        print(
-            f"🚨 Output guardrail failed: {exc}"
+        logger.exception(
+            "Output guardrail failed",
         )
 
         raise HTTPException(
             status_code=503,
-            detail=(
-                "Output security validation failed."
-            ),
+            detail=("Output security validation failed."),
         ) from exc
 
-    if not output_allowed:
+    output_guardrail_elapsed = (
+        time.perf_counter() - output_guardrail_start_time
+    ) * 1000
 
+    log_event(
+        logger,
+        level=(logging.INFO if output_allowed else logging.WARNING),
+        event=(
+            "security.output.allowed" if output_allowed else "security.output.blocked"
+        ),
+        request_id=request_id,
+        answer_length=len(answer),
+        duration_ms=round(
+            output_guardrail_elapsed,
+            2,
+        ),
+    )
+
+    if not output_allowed:
         raise HTTPException(
             status_code=403,
-            detail=(
-                "The generated response was blocked "
-                "by the RAGFury safety policy."
-            ),
+            detail=("The generated response was blocked by the RAGFury safety policy."),
         )
 
     # =========================================================
     # RESPONSE TIME
     # =========================================================
 
-    elapsed = (
-        time.perf_counter()
-        - start_time
-    )
+    elapsed = time.perf_counter() - request_start_time
 
     # =========================================================
     # RETRIEVED DOCUMENTS
@@ -750,20 +1264,14 @@ async def query(
         [],
     )
 
-    documents: List[
-        RetrievedDocument
-    ] = []
+    documents: List[RetrievedDocument] = []
 
     for document in raw_documents:
-
         if hasattr(
             document,
             "page_content",
         ):
-
-            content = (
-                document.page_content
-            )
+            content = document.page_content
 
             metadata = getattr(
                 document,
@@ -772,7 +1280,6 @@ async def query(
             )
 
         else:
-
             content = str(document)
 
             metadata = {}
@@ -785,46 +1292,43 @@ async def query(
         )
 
     # =========================================================
+    # QUERY COMPLETION LOG
+    # =========================================================
+
+    log_event(
+        logger,
+        level=logging.INFO,
+        event="query.completed",
+        request_id=request_id,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        next_step=result.get("next_step"),
+        document_count=len(documents),
+        answer_length=len(answer or ""),
+        retrieval_attempts=result.get("retrieval_attempts"),
+        reflection_attempts=result.get("reflection_attempts"),
+        duration_ms=round(
+            elapsed * 1000,
+            2,
+        ),
+    )
+
+    # =========================================================
     # RESPONSE
     # =========================================================
 
     return QueryResponse(
         question=question,
-
         answer=answer or "No answer generated.",
-
         conversation_id=conversation_id,
-
-        next_step=result.get(
-            "next_step"
-        ),
-
+        next_step=result.get("next_step"),
         documents=documents,
-
-        document_relevance=result.get(
-            "document_relevance"
-        ),
-
-        grade_reason=result.get(
-            "grade_reason"
-        ),
-
-        reflection=result.get(
-            "reflection"
-        ),
-
-        reflection_passed=result.get(
-            "reflection_passed"
-        ),
-
-        retrieval_attempts=result.get(
-            "retrieval_attempts"
-        ),
-
-        reflection_attempts=result.get(
-            "reflection_attempts"
-        ),
-
+        document_relevance=result.get("document_relevance"),
+        grade_reason=result.get("grade_reason"),
+        reflection=result.get("reflection"),
+        reflection_passed=result.get("reflection_passed"),
+        retrieval_attempts=result.get("retrieval_attempts"),
+        reflection_attempts=result.get("reflection_attempts"),
         response_time=round(
             elapsed,
             4,

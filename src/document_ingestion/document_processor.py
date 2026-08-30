@@ -1,36 +1,59 @@
 """Document processing module for loading and splitting documents."""
 
-from typing import List, Union
+import logging
+import time
 from pathlib import Path
+from typing import List, Union
 
-from langchain_core.documents import Document
 from langchain_community.document_loaders import (
-    WebBaseLoader,
+    PyPDFDirectoryLoader,
     PyPDFLoader,
     TextLoader,
-    PyPDFDirectoryLoader,
+    WebBaseLoader,
 )
+from langchain_core.documents import Document
 
 from src.semantic_chunker.semantic_chunker import ThresholdSematicChunker
+from src.utils.loggers import get_logger, log_event
+
+logger = get_logger(__name__)
 
 
 class DocumentProcessor:
-    """Handles document loading and processing."""
+    """Handles document loading and semantic chunking."""
 
     def __init__(
         self,
         model_name: str = "all-MiniLM-L6-v2",
         threshold: float = 0.6,
-    ):
+    ) -> None:
         self.model_name = model_name
         self.threshold = threshold
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="document_processor.initializing",
+            model_name=model_name,
+            threshold=threshold,
+        )
 
         self.splitter = ThresholdSematicChunker(
             model_name=model_name,
             threshold=threshold,
         )
 
-   
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="document_processor.initialized",
+            model_name=model_name,
+            threshold=threshold,
+        )
+
+    # =========================================================
+    # URL
+    # =========================================================
 
     def load_from_url(
         self,
@@ -38,9 +61,51 @@ class DocumentProcessor:
     ) -> List[Document]:
         """Load document(s) from a URL."""
 
-        loader = WebBaseLoader(url)
+        start_time = time.perf_counter()
 
-        return loader.load()
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="document.load.url.started",
+            url=url,
+        )
+
+        try:
+            loader = WebBaseLoader(url)
+
+            documents = loader.load()
+
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="document.load.url.completed",
+                url=url,
+                document_count=len(documents),
+                duration_ms=round(elapsed, 2),
+            )
+
+            return documents
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="document.load.url.failed",
+                url=url,
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "Failed to load documents from URL.",
+            )
+
+            raise
+
+    # =========================================================
+    # PDF DIRECTORY
+    # =========================================================
 
     def load_from_pdf_dir(
         self,
@@ -48,11 +113,59 @@ class DocumentProcessor:
     ) -> List[Document]:
         """Load all PDFs from a directory."""
 
-        loader = PyPDFDirectoryLoader(
-            str(directory)
+        directory = Path(directory)
+
+        start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="document.load.pdf_directory.started",
+            directory=str(directory),
         )
 
-        return loader.load()
+        if not directory.exists():
+            raise FileNotFoundError(f"PDF directory not found: {directory}")
+
+        if not directory.is_dir():
+            raise NotADirectoryError(f"Expected directory: {directory}")
+
+        try:
+            loader = PyPDFDirectoryLoader(str(directory))
+
+            documents = loader.load()
+
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="document.load.pdf_directory.completed",
+                directory=str(directory),
+                document_count=len(documents),
+                duration_ms=round(elapsed, 2),
+            )
+
+            return documents
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="document.load.pdf_directory.failed",
+                directory=str(directory),
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "Failed to load PDFs from directory.",
+            )
+
+            raise
+
+    # =========================================================
+    # TXT
+    # =========================================================
 
     def load_from_txt(
         self,
@@ -60,12 +173,60 @@ class DocumentProcessor:
     ) -> List[Document]:
         """Load a TXT file."""
 
-        loader = TextLoader(
-            str(file_path),
-            encoding="utf-8",
+        file_path = Path(file_path)
+
+        start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="document.load.txt.started",
+            file_name=file_path.name,
+            file_path=str(file_path),
         )
 
-        return loader.load()
+        if not file_path.exists():
+            raise FileNotFoundError(f"TXT file not found: {file_path}")
+
+        try:
+            loader = TextLoader(
+                str(file_path),
+                encoding="utf-8",
+            )
+
+            documents = loader.load()
+
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="document.load.txt.completed",
+                file_name=file_path.name,
+                document_count=len(documents),
+                duration_ms=round(elapsed, 2),
+            )
+
+            return documents
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="document.load.txt.failed",
+                file_name=file_path.name,
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "Failed to load TXT file.",
+            )
+
+            raise
+
+    # =========================================================
+    # SINGLE PDF
+    # =========================================================
 
     def load_from_pdf(
         self,
@@ -73,13 +234,60 @@ class DocumentProcessor:
     ) -> List[Document]:
         """Load a single PDF file."""
 
-        loader = PyPDFLoader(
-            str(file_path)
+        file_path = Path(file_path)
+
+        start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="document.load.pdf.started",
+            file_name=file_path.name,
+            file_path=str(file_path),
         )
 
-        return loader.load()
+        if not file_path.exists():
+            raise FileNotFoundError(f"PDF file not found: {file_path}")
 
-    
+        if file_path.suffix.lower() != ".pdf":
+            raise ValueError(f"Expected PDF file, got: {file_path}")
+
+        try:
+            loader = PyPDFLoader(str(file_path))
+
+            documents = loader.load()
+
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="document.load.pdf.completed",
+                file_name=file_path.name,
+                page_count=len(documents),
+                duration_ms=round(elapsed, 2),
+            )
+
+            return documents
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="document.load.pdf.failed",
+                file_name=file_path.name,
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "Failed to load PDF file.",
+            )
+
+            raise
+
+    # =========================================================
+    # GENERIC DOCUMENT LOADER
+    # =========================================================
 
     def load_documents(
         self,
@@ -90,47 +298,44 @@ class DocumentProcessor:
         PDF file, or TXT file.
         """
 
-        docs: List[Document] = []
+        log_event(
+            logger,
+            level=logging.DEBUG,
+            event="document.load.started",
+            source=str(source),
+        )
 
         if isinstance(source, str) and (
-            source.startswith("http://")
-            or source.startswith("https://")
+            source.startswith("http://") or source.startswith("https://")
         ):
-            docs.extend(
-                self.load_from_url(source)
-            )
-
-            return docs
+            return self.load_from_url(source)
 
         path = Path(source)
 
         if path.is_dir():
-            docs.extend(
-                self.load_from_pdf_dir(path)
-            )
-
-            return docs
+            return self.load_from_pdf_dir(path)
 
         if path.suffix.lower() == ".pdf":
-            docs.extend(
-                self.load_from_pdf(path)
-            )
-
-            return docs
+            return self.load_from_pdf(path)
 
         if path.suffix.lower() == ".txt":
-            docs.extend(
-                self.load_from_txt(path)
-            )
+            return self.load_from_txt(path)
 
-            return docs
+        log_event(
+            logger,
+            level=logging.ERROR,
+            event="document.load.unsupported_source",
+            source=str(source),
+        )
 
         raise ValueError(
             f"Unsupported source type: {source}. "
             "Use a URL, PDF file, PDF directory, or TXT file."
         )
 
-    
+    # =========================================================
+    # SEMANTIC CHUNKING
+    # =========================================================
 
     def split_documents(
         self,
@@ -138,11 +343,54 @@ class DocumentProcessor:
     ) -> List[Document]:
         """Split documents into semantic chunks."""
 
-        return self.splitter.split_documents(
-            documents
+        start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="document.chunking.started",
+            document_count=len(documents),
+            model_name=self.model_name,
+            threshold=self.threshold,
         )
 
-    
+        try:
+            chunks = self.splitter.split_documents(documents)
+
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="document.chunking.completed",
+                document_count=len(documents),
+                chunk_count=len(chunks),
+                model_name=self.model_name,
+                threshold=self.threshold,
+                duration_ms=round(elapsed, 2),
+            )
+
+            return chunks
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="document.chunking.failed",
+                document_count=len(documents),
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "Failed to split documents into semantic chunks.",
+            )
+
+            raise
+
+    # =========================================================
+    # SINGLE PDF PROCESSING
+    # =========================================================
+
     def process_pdf(
         self,
         file_path: Union[str, Path],
@@ -156,45 +404,97 @@ class DocumentProcessor:
 
         file_path = Path(file_path)
 
+        start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="document.processing.started",
+            file_name=file_path.name,
+            file_path=str(file_path),
+        )
+
+        # -----------------------------------------------------
+        # Validate file
+        # -----------------------------------------------------
+
         if not file_path.exists():
-            raise FileNotFoundError(
-                f"PDF file not found: {file_path}"
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="document.processing.file_not_found",
+                file_name=file_path.name,
+                file_path=str(file_path),
             )
+
+            raise FileNotFoundError(f"PDF file not found: {file_path}")
 
         if file_path.suffix.lower() != ".pdf":
-            raise ValueError(
-                f"Expected PDF file, got: {file_path}"
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="document.processing.invalid_file_type",
+                file_name=file_path.name,
+                suffix=file_path.suffix,
             )
 
-        print(
-            f"📄 Processing new PDF: "
-            f"{file_path.name}"
-        )
+            raise ValueError(f"Expected PDF file, got: {file_path}")
 
-        # Load only this PDF
-        docs = self.load_from_pdf(
-            file_path
-        )
+        try:
+            # -------------------------------------------------
+            # Load only this PDF
+            # -------------------------------------------------
 
-        # Semantic chunk only this PDF
-        chunks = self.split_documents(
-            docs
-        )
+            documents = self.load_from_pdf(file_path)
 
-        print(
-            f"📊 Created {len(chunks)} chunks "
-            f"from {file_path.name}"
-        )
+            # -------------------------------------------------
+            # Semantic chunk only this PDF
+            # -------------------------------------------------
 
-        # Make source metadata consistent
-        for chunk in chunks:
-            chunk.metadata["source"] = (
-                file_path.name
+            chunks = self.split_documents(documents)
+
+            # -------------------------------------------------
+            # Normalize source metadata
+            # -------------------------------------------------
+
+            for index, chunk in enumerate(chunks):
+                chunk.metadata["source"] = file_path.name
+
+                # Make chunk IDs deterministic.
+                chunk.metadata["chunk_id"] = index
+
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="document.processing.completed",
+                file_name=file_path.name,
+                page_count=len(documents),
+                chunk_count=len(chunks),
+                duration_ms=round(elapsed, 2),
             )
 
-        return chunks
+            return chunks
 
-    
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="document.processing.failed",
+                file_name=file_path.name,
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "Failed to process PDF.",
+            )
+
+            raise
+
+    # =========================================================
+    # MULTIPLE PDF PROCESSING
+    # =========================================================
 
     def process_pdfs(
         self,
@@ -211,12 +511,54 @@ class DocumentProcessor:
         use process_pdf() instead.
         """
 
-        docs = self.load_documents(
-            directory
+        directory = Path(directory)
+
+        start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="documents.processing_batch.started",
+            directory=str(directory),
         )
 
-        return self.split_documents(
-            docs
-        )
+        try:
+            docs = self.load_documents(directory)
 
+            chunks = self.split_documents(docs)
 
+            # Keep source metadata consistent for compatibility.
+            for chunk in chunks:
+                source = chunk.metadata.get("source")
+
+                if source:
+                    chunk.metadata["source"] = Path(source).name
+
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.INFO,
+                event="documents.processing_batch.completed",
+                directory=str(directory),
+                document_count=len(docs),
+                chunk_count=len(chunks),
+                duration_ms=round(elapsed, 2),
+            )
+
+            return chunks
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="documents.processing_batch.failed",
+                directory=str(directory),
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "Failed to process PDF directory.",
+            )
+
+            raise

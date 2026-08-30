@@ -13,27 +13,23 @@ class QueryRequest(BaseModel):
         min_length=1,
         max_length=2000,
         description="Ask your agent",
-        examples=[
-            "How much sick leave can an employee take?"
-        ],
+        examples=["How much sick leave can an employee take?"],
     )
 
     user_id: str = Field(
         ...,
         min_length=1,
         max_length=100,
-        description=(
-            "User identifier used for long-term "
-            "Mem0 memory."
-        ),
+        description=("User identifier used for long-term Mem0 memory."),
     )
 
     conversation_id: Optional[str] = Field(
         default=None,
         max_length=100,
         description=(
-            "Conversation identifier used for "
-            "short-term Redis memory. "
+            "Conversation identifier used to maintain "
+            "conversation continuity and map the request "
+            "to a persistent LangGraph checkpoint thread. "
             "Generated automatically if not provided."
         ),
     )
@@ -44,9 +40,7 @@ class RetrievedDocument(BaseModel):
 
     content: str
 
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict
-    )
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class QueryResponse(BaseModel):
@@ -61,9 +55,7 @@ class QueryResponse(BaseModel):
 
     next_step: Optional[str] = None
 
-    documents: List[RetrievedDocument] = Field(
-        default_factory=list
-    )
+    documents: List[RetrievedDocument] = Field(default_factory=list)
 
     document_relevance: Optional[bool] = None
 

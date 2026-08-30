@@ -1,8 +1,20 @@
 """Routing agent for RAGFury."""
 
+import logging
+import time
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from src.utils.loggers import (
+    configure_logging,
+    get_logger,
+    log_event,
+)
+
+configure_logging()
+
+logger = get_logger(__name__)
 
 
 class RouteDecision(BaseModel):
@@ -38,7 +50,10 @@ class Agent:
     It does not retrieve documents or generate answers.
     """
 
-    def __init__(self, llm):
+    def __init__(
+        self,
+        llm,
+    ):
         """
         Initialize the routing agent.
 
@@ -51,6 +66,17 @@ class Agent:
         self.agent = None
         self.system_prompt = None
 
+        log_event(
+            logger,
+            level=logging.DEBUG,
+            event="agent.initialized",
+            component="routing_agent",
+        )
+
+    # =========================================================
+    # BUILD
+    # =========================================================
+
     def build(self):
         """
         Build the structured-output routing agent.
@@ -59,7 +85,17 @@ class Agent:
             Configured routing model.
         """
 
-        system_prompt = """
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="agent.build.started",
+            component="routing_agent",
+        )
+
+        start_time = time.perf_counter()
+
+        try:
+            system_prompt = """
 You are the routing agent of RAGFury.
 
 Your ONLY responsibility is to decide which workflow
@@ -192,15 +228,49 @@ rag
 chat
 """
 
-        self.agent = self.llm.with_structured_output(
-            RouteDecision
-        )
+            self.agent = self.llm.with_structured_output(RouteDecision)
 
-        self.system_prompt = system_prompt
+            self.system_prompt = system_prompt
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="agent.build.failed",
+                component="routing_agent",
+                error_type=type(exc).__name__,
+            )
+
+            logger.exception(
+                "Failed to build routing agent",
+            )
+
+            raise
+
+        elapsed = (time.perf_counter() - start_time) * 1000
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="agent.build.completed",
+            component="routing_agent",
+            structured_output=True,
+            duration_ms=round(
+                elapsed,
+                2,
+            ),
+        )
 
         return self.agent
 
-    def route(self, question: str) -> str:
+    # =========================================================
+    # ROUTE
+    # =========================================================
+
+    def route(
+        self,
+        question: str,
+    ) -> str:
         """
         Decide which workflow should handle the question.
 
@@ -212,23 +282,105 @@ chat
             "rag" or "chat".
         """
 
+        if not question:
+            log_event(
+                logger,
+                level=logging.WARNING,
+                event="agent.routing.rejected",
+                reason="empty_question",
+            )
+
+            raise ValueError("Question cannot be empty.")
+
         if self.agent is None:
+            log_event(
+                logger,
+                level=logging.DEBUG,
+                event="agent.build.required",
+                reason="agent_not_initialized",
+            )
+
             self.build()
 
-        response = self.agent.invoke(
-            [
-                {
-                    "role": "system",
-                    "content": self.system_prompt,
-                },
-                {
-                    "role": "user",
-                    "content": question,
-                },
-            ]
+        start_time = time.perf_counter()
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="agent.routing.started",
         )
 
-        return response.next_step
+        try:
+            response = self.agent.invoke(
+                [
+                    {
+                        "role": "system",
+                        "content": self.system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": question,
+                    },
+                ]
+            )
+
+        except Exception as exc:
+            elapsed = (time.perf_counter() - start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="agent.routing.failed",
+                error_type=type(exc).__name__,
+                duration_ms=round(
+                    elapsed,
+                    2,
+                ),
+            )
+
+            logger.exception(
+                "Routing agent invocation failed",
+            )
+
+            raise
+
+        # -----------------------------------------------------
+        # Validate structured response
+        # -----------------------------------------------------
+
+        if not isinstance(
+            response,
+            RouteDecision,
+        ):
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="agent.routing.invalid_response",
+                response_type=type(response).__name__,
+            )
+
+            raise ValueError("Routing agent returned an invalid structured response.")
+
+        next_step = response.next_step
+
+        elapsed = (time.perf_counter() - start_time) * 1000
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="agent.routing.completed",
+            next_step=next_step,
+            duration_ms=round(
+                elapsed,
+                2,
+            ),
+        )
+
+        return next_step
+
+    # =========================================================
+    # GET AGENT
+    # =========================================================
 
     def get_agent(self):
         """
@@ -238,6 +390,13 @@ chat
         """
 
         if self.agent is None:
+            log_event(
+                logger,
+                level=logging.DEBUG,
+                event="agent.build.required",
+                reason="get_agent_called_before_build",
+            )
+
             self.build()
 
         return self.agent

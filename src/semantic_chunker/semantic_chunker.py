@@ -1,7 +1,8 @@
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 from langchain_core.documents import Document
 from nltk.tokenize import sent_tokenize
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
 
 class ThresholdSematicChunker:
     def __init__(self, model_name="all-MiniLM-L6-v2", threshold=0.6):
@@ -39,4 +40,3 @@ class ThresholdSematicChunker:
                 result.append(Document(page_content=chunk, metadata=doc.metadata))
 
         return result
-
