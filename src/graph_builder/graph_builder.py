@@ -308,7 +308,7 @@ class GraphBuilder:
     # AGENT NODE
     # =========================================================
 
-    def agent_node(
+    async def agent_node(
         self,
         state: RAGState,
     ):
@@ -373,7 +373,7 @@ class GraphBuilder:
             raise ValueError("conversation_id is missing from LangGraph state.")
 
         try:
-            next_step = self.agent.route(question)
+            next_step = await self.agent.route(question)
 
         except Exception as exc:
             log_event(
@@ -415,7 +415,7 @@ class GraphBuilder:
     # RETRIEVE NODE
     # =========================================================
 
-    def retrieve_node(
+    async def retrieve_node(
         self,
         state: RAGState,
     ):
@@ -434,7 +434,7 @@ class GraphBuilder:
         )
 
         try:
-            result = self.retrieval_nodes.retrieve_docs(state)
+            result = await self.retrieval_nodes.retrieve_docs(state)
 
         except Exception as exc:
             log_event(
@@ -479,7 +479,7 @@ class GraphBuilder:
     # GRADE NODE
     # =========================================================
 
-    def grade_node(
+    async def grade_node(
         self,
         state: RAGState,
     ):
@@ -498,7 +498,7 @@ class GraphBuilder:
         )
 
         try:
-            result = self.grading_nodes.grade_documents(state)
+            result = await self.grading_nodes.grade_documents(state)
 
         except Exception as exc:
             log_event(
@@ -537,7 +537,7 @@ class GraphBuilder:
     # REWRITE NODE
     # =========================================================
 
-    def rewrite_node(
+    async def rewrite_node(
         self,
         state: RAGState,
     ):
@@ -556,7 +556,7 @@ class GraphBuilder:
         )
 
         try:
-            result = self.rewrite_nodes.rewrite_query(state)
+            result = await self.rewrite_nodes.rewrite_query(state)
 
         except Exception as exc:
             log_event(
@@ -594,7 +594,7 @@ class GraphBuilder:
     # GENERATE NODE
     # =========================================================
 
-    def generate_node(
+    async def generate_node(
         self,
         state: RAGState,
     ):
@@ -613,7 +613,7 @@ class GraphBuilder:
         )
 
         try:
-            result = self.generation_nodes.generate_answer(state)
+            result = await self.generation_nodes.generate_answer(state)
 
         except Exception as exc:
             log_event(
@@ -657,7 +657,7 @@ class GraphBuilder:
     # CHAT NODE
     # =========================================================
 
-    def run_chat_node(
+    async def run_chat_node(
         self,
         state: RAGState,
     ):
@@ -685,7 +685,7 @@ class GraphBuilder:
         )
 
         try:
-            result = self.chat_node_instance.run(state)
+            result = await self.chat_node_instance.run(state)
 
         except Exception as exc:
             log_event(

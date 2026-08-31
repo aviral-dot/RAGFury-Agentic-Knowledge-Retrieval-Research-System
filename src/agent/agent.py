@@ -267,7 +267,7 @@ chat
     # ROUTE
     # =========================================================
 
-    def route(
+    async def route(
         self,
         question: str,
     ) -> str:
@@ -311,7 +311,7 @@ chat
         )
 
         try:
-            response = self.agent.invoke(
+            response = await self.agent.ainvoke(
                 [
                     {
                         "role": "system",

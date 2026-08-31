@@ -1,5 +1,6 @@
 """Hybrid vector store module for incremental dense + sparse retrieval."""
 
+import asyncio
 import json
 import logging
 import time
@@ -36,7 +37,7 @@ class RerankingRetriever(BaseRetriever):
     vector_store: object
     k: int = 2
 
-    def _get_relevant_documents(
+    async def _get_relevant_documents(
         self,
         query: str,
         *,
@@ -55,12 +56,13 @@ class RerankingRetriever(BaseRetriever):
         )
 
         try:
-            docs = self.base_retriever.invoke(query)
+            docs = await self.base_retriever.invoke(query)
 
-            result = self.vector_store._rerank(
-                query=query,
-                documents=docs,
-                k=self.k,
+            result = await asyncio.to_thread(
+                self.vector_store._rerank,
+                query,
+                docs,
+                self.k,
             )
 
             elapsed = (time.perf_counter() - start_time) * 1000
@@ -794,7 +796,7 @@ class VectorStore:
     # RETRIEVE
     # =========================================================
 
-    def retrieve(
+    async def retrieve(
         self,
         query: str,
         k: int = 2,
@@ -823,9 +825,10 @@ class VectorStore:
         )
 
         try:
-            documents = self.hybrid_retriever.invoke(query)
+            documents = await self.hybrid_retriever.ainvoke(query)
 
-            result = self._rerank(
+            result = await asyncio.to_thread(
+                self._rerank,
                 query=query,
                 documents=documents,
                 k=k,

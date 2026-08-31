@@ -1,6 +1,6 @@
 """LangGraph entrypoint for RAGFury."""
 
-import asyncio
+# import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -44,11 +44,17 @@ async def create_graph():
     # VECTOR STORE
     # =========================================================
 
-    vector_store = await asyncio.to_thread(VectorStore)
+    # vector_store = await asyncio.to_thread(VectorStore)
 
-    await asyncio.to_thread(vector_store.initialize)
+    # await asyncio.to_thread(vector_store.initialize)
 
-    retriever = await asyncio.to_thread(vector_store.get_retriever)
+    # retriever = await asyncio.to_thread(vector_store.get_retriever)
+
+    vector_store = VectorStore()
+
+    vector_store.initialize()
+
+    retriever = vector_store.get_retriever()
 
     # =========================================================
     # CHECKPOINTER
@@ -61,8 +67,14 @@ async def create_graph():
         # GRAPH BUILDER
         # -----------------------------------------------------
 
-        graph_builder = await asyncio.to_thread(
-            GraphBuilder,
+        # graph_builder = await asyncio.to_thread(
+        #     GraphBuilder,
+        #     retriever=retriever,
+        #     llm=llm,
+        #     checkpointer=checkpointer,
+        # )
+
+        graph_builder = GraphBuilder(
             retriever=retriever,
             llm=llm,
             checkpointer=checkpointer,

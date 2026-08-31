@@ -97,7 +97,7 @@ async def check_input(
 # ============================================================
 
 
-def check_retrieved_documents(
+async def check_retrieved_documents(
     documents: List[Any],
 ) -> Dict[str, Any]:
     """
@@ -184,7 +184,7 @@ DOCUMENT {index}
         # the security classifier as untrusted content.
         # ----------------------------------------------------
 
-        result = rails.check_async(
+        result = await rails.check_async(
             messages=[
                 {
                     "role": "user",

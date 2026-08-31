@@ -1,5 +1,6 @@
 """LangGraph chat node with short-term and long-term memory."""
 
+import asyncio
 import logging
 import time
 
@@ -51,7 +52,7 @@ class ChatNode:
     # CHAT EXECUTION
     # =========================================================
 
-    def run(
+    async def run(
         self,
         state: RAGState,
     ) -> dict:
@@ -87,7 +88,8 @@ class ChatNode:
         )
 
         try:
-            memory_context = self.memory_manager.get_context(
+            memory_context = await asyncio.to_thread(
+                memory_context=self.memory_manager.get_context,
                 user_id=user_id,
                 conversation_id=conversation_id,
                 query=question,
@@ -227,7 +229,7 @@ Relevant long-term memories:
         )
 
         try:
-            response = self.llm.invoke(messages)
+            response = await self.llm.ainvoke(messages)
 
         except Exception as exc:
             llm_elapsed = (time.perf_counter() - llm_start_time) * 1000
@@ -314,7 +316,8 @@ Relevant long-term memories:
         )
 
         try:
-            self.memory_manager.redis.add_turn(
+            await asyncio.to_thread(
+                self.memory_manager.redis.add_turn,
                 user_id=user_id,
                 conversation_id=conversation_id,
                 user_message=question,
@@ -366,7 +369,8 @@ Relevant long-term memories:
         )
 
         try:
-            memory_queue.enqueue(
+            await asyncio.to_thread(
+                memory_queue.enqueue,
                 save_memory_turn,
                 user_id=user_id,
                 conversation_id=conversation_id,

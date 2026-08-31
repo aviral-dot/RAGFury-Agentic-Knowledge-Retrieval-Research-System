@@ -43,7 +43,7 @@ class GenerationNodes:
     # ANSWER GENERATION
     # =========================================================
 
-    def generate_answer(
+    async def generate_answer(
         self,
         state: RAGState,
     ) -> dict:
@@ -133,7 +133,7 @@ Instructions:
         )
 
         try:
-            response = self.llm.invoke(prompt)
+            response = await self.llm.ainvoke(prompt)
 
         except Exception as exc:
             llm_elapsed = (time.perf_counter() - llm_start_time) * 1000

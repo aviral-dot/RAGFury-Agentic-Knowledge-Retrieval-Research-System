@@ -1,5 +1,6 @@
 """FastAPI backend for RAGFury."""
 
+import asyncio
 import json
 import logging
 import time
@@ -814,7 +815,7 @@ async def lifespan(
             # -------------------------------------------------
 
             try:
-                rag_service.initialize()
+                await asyncio.to_thread(rag_service.initialize())
 
             except Exception as exc:
                 log_event(

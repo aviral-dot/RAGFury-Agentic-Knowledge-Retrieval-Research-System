@@ -1,5 +1,6 @@
 """Memory orchestration layer for Redis and Mem0."""
 
+import asyncio
 import logging
 import time
 
@@ -71,7 +72,7 @@ class MemoryManager:
     # GET MEMORY CONTEXT
     # =========================================================
 
-    def get_context(
+    async def get_context(
         self,
         user_id: str,
         conversation_id: str,
@@ -106,7 +107,8 @@ class MemoryManager:
         )
 
         try:
-            recent_history = self.redis.get_history(
+            recent_history = await asyncio.to_thread(
+                self.redis.get_history,
                 user_id=user_id,
                 conversation_id=conversation_id,
             )
@@ -157,7 +159,8 @@ class MemoryManager:
         )
 
         try:
-            long_term_memories = self.mem0.search(
+            long_term_memories = await asyncio.to_thread(
+                self.mem0.search,
                 user_id=user_id,
                 query=query,
                 limit=5,
@@ -223,7 +226,7 @@ class MemoryManager:
     # SAVE TURN
     # =========================================================
 
-    def save_turn(
+    async def save_turn(
         self,
         user_id: str,
         conversation_id: str,
@@ -246,7 +249,8 @@ class MemoryManager:
         )
 
         try:
-            result = self.mem0.add(
+            result = await asyncio.to_thread(
+                self.mem0.add,
                 user_id=user_id,
                 user_message=user_message,
                 assistant_message=assistant_message,

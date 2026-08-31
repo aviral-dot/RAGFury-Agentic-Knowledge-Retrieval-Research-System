@@ -60,7 +60,7 @@ class GradingNodes:
     # DOCUMENT GRADING
     # =========================================================
 
-    def grade_documents(
+    async def grade_documents(
         self,
         state: RAGState,
     ) -> dict:
@@ -187,7 +187,7 @@ Return a brief reason explaining your decision.
         )
 
         try:
-            result = self.grader.invoke(prompt)
+            result = await self.grader.ainvoke(prompt)
 
         except Exception as exc:
             llm_elapsed = (time.perf_counter() - llm_start_time) * 1000

@@ -1,7 +1,7 @@
 from src.memory.memory_manager import MemoryManager
 
 
-def save_memory_turn(
+async def save_memory_turn(
     user_id: str,
     conversation_id: str,
     user_message: str,
@@ -9,7 +9,7 @@ def save_memory_turn(
 ):
     memory_manager = MemoryManager()
 
-    memory_manager.save_turn(
+    await memory_manager.save_turn(
         user_id=user_id,
         conversation_id=conversation_id,
         user_message=user_message,

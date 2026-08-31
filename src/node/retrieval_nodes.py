@@ -115,7 +115,7 @@ class RAGNodes:
     # RETRIEVAL
     # =========================================================
 
-    def retrieve_docs(
+    async def retrieve_docs(
         self,
         state: RAGState,
     ) -> RAGState:
@@ -148,7 +148,7 @@ class RAGNodes:
         # -----------------------------------------------------
 
         try:
-            docs = self.retriever.invoke(question)
+            docs = await self.retriever.ainvoke(question)
 
         except Exception as exc:
             elapsed = (time.perf_counter() - start_time) * 1000
@@ -213,7 +213,7 @@ class RAGNodes:
         )
 
         try:
-            guardrail_result = check_retrieved_documents(docs)
+            guardrail_result = await check_retrieved_documents(docs)
 
         except Exception as exc:
             guardrail_elapsed = (time.perf_counter() - guardrail_start) * 1000

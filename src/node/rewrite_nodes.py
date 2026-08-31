@@ -43,7 +43,7 @@ class RewriteNodes:
     # QUERY REWRITING
     # =========================================================
 
-    def rewrite_query(
+    async def rewrite_query(
         self,
         state: RAGState,
     ) -> dict:
@@ -137,7 +137,7 @@ Return only the improved search query.
         )
 
         try:
-            response = self.llm.invoke(prompt)
+            response = await self.llm.ainvoke(prompt)
 
         except Exception as exc:
             llm_elapsed = (time.perf_counter() - llm_start_time) * 1000
