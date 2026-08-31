@@ -1,17 +1,15 @@
 import json
-import os
 
 import redis
+
+from src.config.config import Config
 
 
 class RedisMemory:
     """Short-term conversational memory backed by Redis."""
 
     def __init__(self, redis_url: str | None = None, max_messages: int = 20):
-        self.redis_url = redis_url or os.getenv(
-            "REDIS_URL",
-            "redis://localhost:6379",
-        )
+        self.redis_url = redis_url or Config.REDIS_URL
 
         self.max_messages = max_messages
 

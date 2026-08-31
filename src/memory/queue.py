@@ -1,9 +1,10 @@
 from redis import Redis
 from rq import Queue
 
-redis_connection = Redis(
-    host="localhost",
-    port=6379,
+from src.config.config import Config
+
+redis_connection = Redis.from_url(
+    Config.REDIS_URL,
     decode_responses=True,
 )
 

@@ -21,6 +21,16 @@ class Config:
     CHUNK_SIZE = 500
     CHUNK_OVERLAP = 50
 
+    REDIS_URL = os.getenv(
+        "REDIS_URL",
+        "redis://localhost:6379",
+    )
+
+    QDRANT_URL = os.getenv(
+        "QDRANT_URL",
+        "http://localhost:6333",
+    )
+
     # Default URLs
     DEFAULT_URLS = [
         "https://lilianweng.github.io/posts/2023-06-23-agent/",

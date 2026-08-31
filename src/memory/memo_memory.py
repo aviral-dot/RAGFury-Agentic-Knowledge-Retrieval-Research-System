@@ -7,6 +7,7 @@ import time
 from dotenv import load_dotenv
 from mem0 import Memory
 
+from src.config.config import Config
 from src.utils.loggers import (
     configure_logging,
     get_logger,
@@ -48,10 +49,7 @@ class Mem0Memory:
                 "provider": "qdrant",
                 "config": {
                     "collection_name": ("ragfury_memories"),
-                    "url": os.getenv(
-                        "QDRANT_URL",
-                        "http://localhost:6333",
-                    ),
+                    "url": Config.QDRANT_URL,
                     "embedding_model_dims": 768,
                 },
             },
