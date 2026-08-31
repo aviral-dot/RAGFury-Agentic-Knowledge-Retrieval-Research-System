@@ -22,6 +22,8 @@ configure_logging()
 
 logger = get_logger(__name__)
 
+MAX_RETRIEVAL_ATTEMPTS = 3
+
 
 class GraphBuilder:
     """
@@ -726,6 +728,53 @@ class GraphBuilder:
         return result
 
     # =========================================================
+    # ABSTAIN NODE
+    # =========================================================
+
+    def abstain_node(
+        self,
+        state: RAGState,
+    ):
+        """
+        Stop the RAG workflow when the maximum number of
+        retrieval attempts has been exhausted without finding
+        sufficiently relevant documents.
+        """
+
+        request_id = state.get("request_id")
+
+        retrieval_attempts = state.get(
+            "retrieval_attempts",
+            0,
+        )
+
+        abstention_reason = (
+            "Maximum retrieval attempts exhausted without "
+            "finding sufficiently relevant documents."
+        )
+
+        log_event(
+            logger,
+            level=logging.WARNING,
+            event="graph.node.abstained",
+            node="abstain",
+            request_id=request_id,
+            retrieval_attempts=retrieval_attempts,
+            max_retrieval_attempts=MAX_RETRIEVAL_ATTEMPTS,
+            reason=abstention_reason,
+        )
+
+        return {
+            "answer": (
+                "I’m sorry, but I couldn’t find sufficiently "
+                "relevant information in the available documents "
+                "to answer your question reliably."
+            ),
+            "retrieval_abstained": True,
+            "abstention_reason": abstention_reason,
+        }
+
+    # =========================================================
     # ROUTE AFTER AGENT
     # =========================================================
 
@@ -790,12 +839,16 @@ class GraphBuilder:
         state: RAGState,
     ):
         """
-        Decide whether retrieved documents are relevant.
+            Decide what to do after document relevance grading.
 
-        Returns:
+        Relevant documents:
+            -> generate
 
-            "generate" -> documents are relevant
-            "rewrite"  -> documents are not relevant
+        Irrelevant documents and retry budget remaining:
+            -> rewrite
+
+        Irrelevant documents and retry budget exhausted:
+            -> abstain
         """
 
         request_id = state.get("request_id")
@@ -803,6 +856,11 @@ class GraphBuilder:
         relevant = state.get(
             "document_relevance",
             False,
+        )
+
+        retrieval_attempts = state.get(
+            "retrieval_attempts",
+            0,
         )
 
         if relevant:
@@ -814,9 +872,25 @@ class GraphBuilder:
                 request_id=request_id,
                 destination="generate",
                 document_relevance=True,
+                retrieval_attempts=retrieval_attempts,
             )
 
             return "generate"
+
+        if retrieval_attempts >= MAX_RETRIEVAL_ATTEMPTS:
+            log_event(
+                logger,
+                level=logging.WARNING,
+                event="graph.routing.decision",
+                node="grade",
+                request_id=request_id,
+                destination="abstain",
+                document_relevance=False,
+                retrieval_attempts=retrieval_attempts,
+                max_retrieval_attempts=MAX_RETRIEVAL_ATTEMPTS,
+            )
+
+            return "abstain"
 
         log_event(
             logger,
@@ -826,6 +900,8 @@ class GraphBuilder:
             request_id=request_id,
             destination="rewrite",
             document_relevance=False,
+            retrieval_attempts=retrieval_attempts,
+            max_retrieval_attempts=MAX_RETRIEVAL_ATTEMPTS,
         )
 
         return "rewrite"
@@ -869,6 +945,11 @@ class GraphBuilder:
             )
 
             workflow.add_node(
+                "abstain",
+                self.abstain_node,
+            )
+
+            workflow.add_node(
                 "rewrite",
                 self.rewrite_node,
             )
@@ -905,6 +986,7 @@ class GraphBuilder:
                 {
                     "generate": "generate",
                     "rewrite": "rewrite",
+                    "abstain": "abstain",
                 },
             )
 
@@ -920,6 +1002,11 @@ class GraphBuilder:
 
             workflow.add_edge(
                 "chat",
+                END,
+            )
+
+            workflow.add_edge(
+                "abstain",
                 END,
             )
 
