@@ -55,6 +55,16 @@ class RewriteNodes:
 
         question = state["question"]
 
+        retrieved_docs = state.get(
+            "retrieved_docs",
+            [],
+        )
+
+        grade_reason = state.get(
+            "grade_reason",
+            "The retrieved documents were not sufficiently relevant.",
+        )
+
         retrieval_attempts = state.get(
             "retrieval_attempts",
             0,
@@ -80,24 +90,53 @@ class RewriteNodes:
         # -----------------------------------------------------
         # BUILD PROMPT
         # -----------------------------------------------------
+        retrieved_context = "\n\n".join(
+            [
+                f"Candidate {index + 1}:\n{doc.page_content[:1500]}"
+                for index, doc in enumerate(retrieved_docs[:5])
+            ]
+        )
+
+        if not retrieved_context:
+            retrieved_context = "No documents were retrieved."
 
         try:
             prompt = f"""
 You are a query rewriting assistant for an Agentic RAG system.
 
-The initial retrieval did not return sufficiently relevant
-documents for the user's question.
+The previous retrieval attempt did not return sufficiently
+relevant documents.
 
-Rewrite the question so that it is clearer, more specific,
-and more suitable for semantic and keyword retrieval and use
-different wording so as to retrieve the documents effectively.
+Your task is to generate ONE improved search query for the
+next retrieval attempt.
 
-Do not answer the question.
-
-Original question:
+Previous search query:
 {question}
 
-Return only the improved search query.
+Retrieved candidate documents:
+{retrieved_context}
+
+Grader reason:
+{grade_reason}
+
+Instructions:
+
+1. Preserve the original information need.
+2. Analyze the grader's reason to understand why retrieval failed.
+3. Examine the retrieved candidates to understand what retrieval
+   found and why those documents may be irrelevant.
+4. If the retrieved documents are about the wrong topic, change
+   the query so that it targets the correct topic.
+5. If the query is too broad, make it more specific.
+6. If useful terminology or synonyms are present in the retrieved
+   documents, use them when appropriate.
+7. Optimize the query for both semantic and keyword retrieval.
+8. Do not answer the user's question.
+9. Do not invent facts.
+10. Return ONLY the improved search query.
+11. Do not include explanations, numbering, labels, or quotation marks.
+
+Improved search query:
 """
 
         except Exception as exc:
