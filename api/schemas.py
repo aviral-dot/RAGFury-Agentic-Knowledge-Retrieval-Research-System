@@ -90,3 +90,17 @@ class SystemInfoResponse(BaseModel):
     rag_initialized: bool
 
     document_chunks: int
+
+
+class ErrorDetail(BaseModel):
+    """Public API error details."""
+
+    code: str
+    message: str
+    request_id: str
+
+
+class ErrorResponse(BaseModel):
+    """Standard API error response."""
+
+    error: ErrorDetail

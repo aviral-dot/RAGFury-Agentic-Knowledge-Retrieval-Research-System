@@ -1152,13 +1152,13 @@ async def query(
             error_type=type(exc).__name__,
         )
 
-        logger.warning(
-            "Malicious document blocked",
-        )
-
         raise HTTPException(
             status_code=400,
-            detail=str(exc),
+            detail={
+                "code": "MALICIOUS_DOCUMENT",
+                "message": ("The document failed security validation."),
+                "request_id": request_id,
+            },
         ) from exc
 
     except Exception as exc:
@@ -1184,7 +1184,11 @@ async def query(
 
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail={
+                "code": "INTERNAL_ERROR",
+                "message": "An internal error occurred.",
+                "request_id": request_id,
+            },
         ) from exc
 
     # =========================================================
