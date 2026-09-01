@@ -14086,3 +14086,9 @@
 {"timestamp": "2026-09-01T15:42:45.033640+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST https://api.groq.com/openai/v1/chat/completions \"HTTP/1.1 200 OK\""}
 {"timestamp": "2026-09-01T15:42:45.353894+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST https://api.groq.com/openai/v1/chat/completions \"HTTP/1.1 200 OK\""}
 {"timestamp": "2026-09-01T15:42:47.289584+00:00", "level": "WARNING", "logger": "posthog", "message": "[PostHog] analytics lane flush ran out of budget (1.0s granted) with 2 items pending."}
+{"timestamp": "2026-09-01T15:57:50.591492+00:00", "level": "INFO", "logger": "src.node.rewrite_nodes", "message": "rag.rewrite.started", "event": "rag.rewrite.started", "retrieval_attempt": 1, "rewrite_attempt": 1}
+{"timestamp": "2026-09-01T15:57:51.341675+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST https://api.groq.com/openai/v1/chat/completions \"HTTP/1.1 200 OK\""}
+{"timestamp": "2026-09-01T15:57:51.422237+00:00", "level": "INFO", "logger": "src.node.rewrite_nodes", "message": "rag.rewrite.completed", "event": "rag.rewrite.completed", "retrieval_attempt": 1, "rewrite_attempt": 1, "original_query_length": 49, "rewritten_query_length": 56, "llm_duration_ms": 824.59, "duration_ms": 830.75}
+{"timestamp": "2026-09-01T15:57:52.336360+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST https://api.groq.com/openai/v1/chat/completions \"HTTP/1.1 200 OK\""}
+{"timestamp": "2026-09-01T15:57:52.848954+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST https://api.groq.com/openai/v1/chat/completions \"HTTP/1.1 200 OK\""}
+{"timestamp": "2026-09-01T15:57:54.759082+00:00", "level": "WARNING", "logger": "posthog", "message": "[PostHog] analytics lane flush ran out of budget (1.0s granted) with 2 items pending."}
