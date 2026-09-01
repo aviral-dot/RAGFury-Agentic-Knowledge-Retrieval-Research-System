@@ -12,16 +12,16 @@ from sentence_transformers import SentenceTransformer
 logger = logging.getLogger(__name__)
 
 
-class ThresholdSemanticChunker:
+class ThresholdSematicChunker:
     """Split text into semantically coherent chunks using sentence similarity."""
 
     def __init__(
         self,
         model_name: str = "all-MiniLM-L6-v2",
-        threshold: float = 0.6,
+        threshold: float = 0.5,
         batch_size: int = 32,
         device: Optional[str] = None,
-        max_chunk_chars: int = 2000,
+        max_chunk_chars: int = 1200,
         min_chunk_chars: int = 100,
     ) -> None:
         if not 0.0 <= threshold <= 1.0:
@@ -130,8 +130,6 @@ class ThresholdSemanticChunker:
         if current_chunk:
             chunks.append(" ".join(current_chunk))
 
-        chunks = self._merge_small_chunks(chunks)
-
         elapsed = time.perf_counter() - start_time
 
         average_chunk_size = (
@@ -152,26 +150,6 @@ class ThresholdSemanticChunker:
         )
 
         return chunks
-
-    def _merge_small_chunks(self, chunks: List[str]) -> List[str]:
-        """Merge very small chunks with neighboring chunks when possible."""
-
-        if not chunks or self.min_chunk_chars == 0:
-            return chunks
-
-        merged: List[str] = []
-
-        for chunk in chunks:
-            if (
-                merged
-                and len(chunk) < self.min_chunk_chars
-                and len(merged[-1]) + 1 + len(chunk) <= self.max_chunk_chars
-            ):
-                merged[-1] = f"{merged[-1]} {chunk}"
-            else:
-                merged.append(chunk)
-
-        return merged
 
     def split_documents(self, docs: List[Document]) -> List[Document]:
         """Split LangChain documents while preserving and enriching metadata."""

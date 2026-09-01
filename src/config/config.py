@@ -31,6 +31,11 @@ class Config:
         "http://localhost:6333",
     )
 
+    QDRANT_COLLECTION = os.getenv(
+        "QDRANT_COLLECTION",
+        "ragfury_documents",
+    )
+
     # Default URLs
     DEFAULT_URLS = [
         "https://lilianweng.github.io/posts/2023-06-23-agent/",

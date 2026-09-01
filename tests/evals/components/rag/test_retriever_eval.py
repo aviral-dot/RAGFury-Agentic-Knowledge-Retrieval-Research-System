@@ -31,7 +31,7 @@ class RetrieverComponent:
         self.rag_nodes = rag_nodes
 
     @observe(metrics=get_retrieval_metrics())
-    def retrieve(
+    async def retrieve(
         self,
         query: str,
     ) -> list[str]:
@@ -44,7 +44,7 @@ class RetrieverComponent:
             "question": query,
         }
 
-        result = self.rag_nodes.retrieve_docs(state)
+        result = await self.rag_nodes.retrieve_docs(state)
 
         retrieved_context = documents_to_context(result["retrieved_docs"])
 
@@ -69,7 +69,8 @@ def retriever_component():
     "golden",
     rag_retrieval_goldens,
 )
-def test_retriever_component(
+@pytest.mark.asyncio
+async def test_retriever_component(
     golden: Golden,
     retriever_component: RetrieverComponent,
 ):
@@ -81,7 +82,7 @@ def test_retriever_component(
     the active golden.
     """
 
-    retriever_component.retrieve(golden.input)
+    await retriever_component.retrieve(golden.input)
 
     assert_test(
         golden=golden,
