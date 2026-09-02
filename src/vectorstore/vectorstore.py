@@ -27,14 +27,6 @@ from src.utils.loggers import (
     get_logger,
     log_event,
 )
-from src.utils.metrics import (
-    RERANKER_INPUT_DOCUMENTS,
-    RERANKER_LATENCY,
-    RERANKER_OUTPUT_DOCUMENTS,
-    RETRIEVAL_ATTEMPTS,
-    RETRIEVAL_LATENCY,
-    RETRIEVED_DOCUMENTS,
-)
 
 configure_logging()
 
@@ -775,8 +767,6 @@ class VectorStore:
 
         start_time = time.perf_counter()
 
-        RERANKER_INPUT_DOCUMENTS.observe(len(documents))
-
         log_event(
             logger,
             level=logging.DEBUG,
@@ -815,12 +805,8 @@ class VectorStore:
 
             result = filtered[:k]
 
-            RERANKER_OUTPUT_DOCUMENTS.observe(len(documents))
-
             elapsed_seconds = time.perf_counter() - start_time
             elapsed_ms = elapsed_seconds * 1000
-
-            RERANKER_LATENCY.observe(elapsed_seconds)
 
             top_score = float(ranked_documents[0][0]) if ranked_documents else None
 
@@ -864,8 +850,6 @@ class VectorStore:
             elapsed_seconds = time.perf_counter() - start_time
             elapsed_ms = elapsed_seconds * 1000
 
-            RERANKER_LATENCY.observe(elapsed_seconds)
-
             log_event(
                 logger,
                 level=logging.ERROR,
@@ -907,8 +891,6 @@ class VectorStore:
 
         start_time = time.perf_counter()
 
-        RETRIEVAL_ATTEMPTS.inc()
-
         log_event(
             logger,
             level=logging.INFO,
@@ -924,8 +906,6 @@ class VectorStore:
             # -------------------------------------------------
 
             documents = await self.hybrid_retriever.ainvoke(query)
-
-            RETRIEVED_DOCUMENTS.observe(len(documents))
 
             log_event(
                 logger,
@@ -960,8 +940,6 @@ class VectorStore:
             elapsed_seconds = time.perf_counter() - start_time
             elapsed_ms = elapsed_seconds * 1000
 
-            RETRIEVAL_LATENCY.observe(elapsed_seconds)
-
             log_event(
                 logger,
                 level=logging.INFO,
@@ -981,8 +959,6 @@ class VectorStore:
         except Exception as exc:
             elapsed_seconds = time.perf_counter() - start_time
             elapsed_ms = elapsed_seconds * 1000
-
-            RETRIEVAL_LATENCY.observe(elapsed_seconds)
 
             log_event(
                 logger,

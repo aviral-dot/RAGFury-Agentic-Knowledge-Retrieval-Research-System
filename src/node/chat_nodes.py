@@ -14,7 +14,6 @@ from src.memory.memory_jobs import save_memory_turn
 from src.memory.memory_manager import MemoryManager
 from src.memory.queue import memory_queue
 from src.state.rag_state import RAGState
-from src.utils.llm_observability import invoke_llm
 from src.utils.loggers import (
     configure_logging,
     get_logger,
@@ -230,11 +229,7 @@ Relevant long-term memories:
         )
 
         try:
-            response = await invoke_llm(
-                llm=self.llm,
-                operation="chat",
-                invoke=lambda: self.llm.ainvoke(messages),
-            )
+            response = await self.llm.ainvoke(messages)
 
         except Exception as exc:
             llm_elapsed = (time.perf_counter() - llm_start_time) * 1000
