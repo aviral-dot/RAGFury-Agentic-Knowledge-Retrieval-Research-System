@@ -52,3 +52,13 @@ class Config:
         return ChatGroq(
             model=cls.LLM_MODEL, groq_api_key=cls.GROQ_API_KEY, temperature=0
         )
+
+
+@staticmethod
+def get_cors_origins() -> list[str]:
+    value = os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:8501",
+    )
+
+    return [origin.strip() for origin in value.split(",") if origin.strip()]

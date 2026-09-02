@@ -929,9 +929,7 @@ Instrumentator().instrument(app).expose(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8501",
-    ],
+    allow_origins=Config.get_cors_origins(),
     allow_credentials=True,
     allow_methods=[
         "GET",
