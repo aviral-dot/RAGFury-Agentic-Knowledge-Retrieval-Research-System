@@ -14,3 +14,5 @@ langgraph dev --allow-blocking
 uv run deepeval test run "tests/evals/components/rag/test_grader_eval.py::test_grader_component[golden0]" -v -s
 
 uv run deepeval test run "tests/evals/components/rag/test_generation_eval.py::test_generation_component[golden0]" -v -s
+
+uv run deepeval test run "tests/evals/components/rag/test_rewrite_eval.py::test_rewrite_component[golden0]" -v -s

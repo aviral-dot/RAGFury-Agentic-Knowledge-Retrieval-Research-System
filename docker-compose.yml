@@ -50,12 +50,10 @@ services:
 
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
 
     ports:
       - "9090:9090"
-
-    depends_on:
-      - ragfury-api
 
     restart: unless-stopped
 
@@ -80,3 +78,4 @@ volumes:
   qdrant_data:
   ragfury_postgres_data:
   grafana_data:
+  prometheus_data:

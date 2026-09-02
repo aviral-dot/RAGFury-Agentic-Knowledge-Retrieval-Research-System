@@ -5,7 +5,7 @@ models:
 
   - type: main
     engine: nim
-    model: meta/llama-3.1-8b-instruct
+    model: nvidia/nemotron-3.5-lightning-30b-a3b
 
   # ============================================================
   # CONTENT SAFETY

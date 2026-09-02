@@ -149,8 +149,14 @@ class VectorStore:
         qdrant_api_key: str | None = None,
         retrieval_k: int = 10,
         rerank_k: int = 2,
+        mode: str = "query",
     ):
         """Initialize the Qdrant-backed vector store."""
+
+        if mode not in {"query", "ingestion"}:
+            raise ValueError("VectorStore mode must be either 'query' or 'ingestion'.")
+
+        self.mode = mode
 
         start_time = time.perf_counter()
 
@@ -170,6 +176,7 @@ class VectorStore:
             logger,
             level=logging.INFO,
             event="vectorstore.initialization.started",
+            mode=self.mode,
             qdrant_url=self.qdrant_url,
             collection_name=self.collection_name,
             retrieval_k=self.retrieval_k,
@@ -327,6 +334,7 @@ class VectorStore:
             logger,
             level=logging.INFO,
             event="vectorstore.initialization.completed",
+            mode=self.mode,
             duration_ms=round(elapsed, 2),
         )
 
@@ -747,6 +755,12 @@ class VectorStore:
         min_score: float = 0.0,
     ) -> List[Document]:
         """Rerank retrieved documents using CrossEncoder."""
+
+        if self.reranker is None:
+            raise RuntimeError(
+                "Reranking is unavailable because the VectorStore "
+                "was initialized in ingestion mode."
+            )
 
         if not documents:
             log_event(

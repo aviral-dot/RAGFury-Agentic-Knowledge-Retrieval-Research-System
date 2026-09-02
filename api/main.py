@@ -1,12 +1,10 @@
 """FastAPI backend for RAGFury."""
 
 import asyncio
-import json
 import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import FastAPI, HTTPException
@@ -27,9 +25,6 @@ from src.checkpoint.postgres import (
     get_checkpoint_database_url,
 )
 from src.config.config import Config
-from src.document_ingestion.document_processor import (
-    DocumentProcessor,
-)
 from src.graph_builder.graph_builder import GraphBuilder
 from src.guardrails.exceptions import (
     MaliciousDocumentError,
@@ -73,13 +68,10 @@ class RAGService:
 
     def __init__(
         self,
-        data_directory: Path,
     ) -> None:
 
-        self.data_directory = data_directory
-
         self.llm = None
-        self.doc_processor = None
+
         self.vector_store = None
         self.graph_builder = None
 
@@ -93,312 +85,6 @@ class RAGService:
 
         self.num_chunks = 0
         self.initialized = False
-
-        # -----------------------------------------------------
-        # Registry of PDFs that have already been processed
-        # -----------------------------------------------------
-
-        self.processed_files_path = Path("storage/processed_files.json")
-
-        self.processed_files_path.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        self.processed_files = set()
-
-    # =========================================================
-    # PROCESSED FILE REGISTRY
-    # =========================================================
-
-    def _load_processed_files(self) -> set[str]:
-        """Load names of PDFs that have already been indexed."""
-
-        if not self.processed_files_path.exists():
-            return set()
-
-        try:
-            with open(
-                self.processed_files_path,
-                "r",
-                encoding="utf-8",
-            ) as file:
-                data = json.load(file)
-
-            return set(data)
-
-        except (
-            json.JSONDecodeError,
-            OSError,
-        ) as exc:
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="ingestion.registry.load.failed",
-                registry_path=str(self.processed_files_path),
-                error_type=type(exc).__name__,
-            )
-
-            logger.exception(
-                "Failed to load processed file registry",
-            )
-
-            raise RuntimeError("Could not load processed file registry.") from exc
-
-    def _save_processed_files(self) -> None:
-        """Save processed PDF filenames."""
-
-        start_time = time.perf_counter()
-
-        try:
-            with open(
-                self.processed_files_path,
-                "w",
-                encoding="utf-8",
-            ) as file:
-                json.dump(
-                    sorted(self.processed_files),
-                    file,
-                    indent=2,
-                )
-
-            elapsed = (time.perf_counter() - start_time) * 1000
-
-            log_event(
-                logger,
-                level=logging.DEBUG,
-                event="ingestion.registry.save.completed",
-                processed_file_count=len(self.processed_files),
-                duration_ms=round(
-                    elapsed,
-                    2,
-                ),
-            )
-
-        except Exception as exc:
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="ingestion.registry.save.failed",
-                error_type=type(exc).__name__,
-            )
-
-            logger.exception(
-                "Failed to save processed file registry",
-            )
-
-            raise
-
-    # =========================================================
-    # FIND NEW PDF FILES
-    # =========================================================
-
-    def _get_new_pdf_files(self) -> List[Path]:
-        """
-        Return only PDF files that have never been processed.
-        """
-
-        pdf_files = sorted(self.data_directory.glob("*.pdf"))
-
-        new_files = [
-            file for file in pdf_files if file.name not in self.processed_files
-        ]
-
-        log_event(
-            logger,
-            level=logging.DEBUG,
-            event="ingestion.pdf.discovery.completed",
-            total_pdf_count=len(pdf_files),
-            new_pdf_count=len(new_files),
-        )
-
-        return new_files
-
-    # =========================================================
-    # INCREMENTAL INGESTION
-    # =========================================================
-
-    def _sync_documents(self) -> None:
-        """
-        Detect and process only newly added PDFs.
-        """
-
-        start_time = time.perf_counter()
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="ingestion.sync.started",
-        )
-
-        # -----------------------------------------------------
-        # Load registry
-        # -----------------------------------------------------
-
-        self.processed_files = self._load_processed_files()
-
-        log_event(
-            logger,
-            level=logging.DEBUG,
-            event="ingestion.registry.loaded",
-            processed_file_count=len(self.processed_files),
-        )
-
-        # -----------------------------------------------------
-        # Find new PDFs
-        # -----------------------------------------------------
-
-        new_files = self._get_new_pdf_files()
-
-        if not new_files:
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="ingestion.sync.skipped",
-                reason="no_new_documents",
-            )
-
-            self.vector_store.initialize()
-
-            elapsed = (time.perf_counter() - start_time) * 1000
-
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="ingestion.sync.completed",
-                new_pdf_count=0,
-                chunk_count=0,
-                duration_ms=round(
-                    elapsed,
-                    2,
-                ),
-            )
-
-            return
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="ingestion.pdf.discovery.completed",
-            new_pdf_count=len(new_files),
-        )
-
-        all_new_chunks = []
-
-        # -----------------------------------------------------
-        # Process ONLY new PDFs
-        # -----------------------------------------------------
-
-        for pdf_file in new_files:
-            pdf_start_time = time.perf_counter()
-
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="ingestion.pdf.processing.started",
-                filename=pdf_file.name,
-            )
-
-            try:
-                chunks = self.doc_processor.process_pdf(pdf_file)
-
-            except Exception as exc:
-                log_event(
-                    logger,
-                    level=logging.ERROR,
-                    event="ingestion.pdf.processing.failed",
-                    filename=pdf_file.name,
-                    error_type=type(exc).__name__,
-                )
-
-                logger.exception(
-                    "PDF processing failed",
-                )
-
-                raise
-
-            all_new_chunks.extend(chunks)
-
-            pdf_elapsed = (time.perf_counter() - pdf_start_time) * 1000
-
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="ingestion.pdf.processing.completed",
-                filename=pdf_file.name,
-                chunk_count=len(chunks),
-                duration_ms=round(
-                    pdf_elapsed,
-                    2,
-                ),
-            )
-
-        # -----------------------------------------------------
-        # Add ONLY new chunks to vector store
-        # -----------------------------------------------------
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="vectorstore.indexing.started",
-            chunk_count=len(all_new_chunks),
-        )
-
-        vector_start_time = time.perf_counter()
-
-        try:
-            self.vector_store.initialize(new_documents=all_new_chunks)
-
-        except Exception as exc:
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="vectorstore.indexing.failed",
-                chunk_count=len(all_new_chunks),
-                error_type=type(exc).__name__,
-            )
-
-            logger.exception(
-                "Vector store indexing failed",
-            )
-
-            raise
-
-        vector_elapsed = (time.perf_counter() - vector_start_time) * 1000
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="vectorstore.indexing.completed",
-            chunk_count=len(all_new_chunks),
-            duration_ms=round(
-                vector_elapsed,
-                2,
-            ),
-        )
-
-        # -----------------------------------------------------
-        # Mark files as processed
-        # -----------------------------------------------------
-
-        for pdf_file in new_files:
-            self.processed_files.add(pdf_file.name)
-
-        self._save_processed_files()
-
-        elapsed = (time.perf_counter() - start_time) * 1000
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="ingestion.sync.completed",
-            new_pdf_count=len(new_files),
-            chunk_count=len(all_new_chunks),
-            duration_ms=round(
-                elapsed,
-                2,
-            ),
-        )
 
     # =========================================================
     # INITIALIZATION
@@ -419,21 +105,6 @@ class RAGService:
             level=logging.INFO,
             event="rag.initialization.started",
         )
-
-        # -----------------------------------------------------
-        # Validate data directory
-        # -----------------------------------------------------
-
-        if not self.data_directory.exists():
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="rag.initialization.failed",
-                reason="data_directory_not_found",
-                data_directory=str(self.data_directory),
-            )
-
-            raise FileNotFoundError(f"Data directory not found: {self.data_directory}")
 
         # -----------------------------------------------------
         # Load LLM
@@ -478,24 +149,24 @@ class RAGService:
         # Document processor
         # -----------------------------------------------------
 
-        log_event(
-            logger,
-            level=logging.INFO,
-            event=("document_processor.initialization.started"),
-        )
+        # log_event(
+        #     logger,
+        #     level=logging.INFO,
+        #     event=("document_processor.initialization.started"),
+        # )
 
-        self.doc_processor = DocumentProcessor(
-            model_name="all-MiniLM-L6-v2",
-            threshold=0.6,
-        )
+        # self.doc_processor = DocumentProcessor(
+        #     model_name="all-MiniLM-L6-v2",
+        #     threshold=0.6,
+        # )
 
-        log_event(
-            logger,
-            level=logging.INFO,
-            event=("document_processor.initialization.completed"),
-            model_name="all-MiniLM-L6-v2",
-            threshold=0.6,
-        )
+        # log_event(
+        #     logger,
+        #     level=logging.INFO,
+        #     event=("document_processor.initialization.completed"),
+        #     model_name="all-MiniLM-L6-v2",
+        #     threshold=0.6,
+        # )
 
         # -----------------------------------------------------
         # Vector store
@@ -505,21 +176,30 @@ class RAGService:
             logger,
             level=logging.INFO,
             event="vectorstore.initialization.started",
+            mode="query",
         )
 
-        self.vector_store = VectorStore()
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="vectorstore.initialization.started",
+        )
+
+        self.vector_store = VectorStore(mode="query")
 
         log_event(
             logger,
             level=logging.INFO,
             event="vectorstore.initialization.completed",
+            mode=query,
         )
 
+        self.vector_store.initialize()
         # -----------------------------------------------------
         # Incremental document synchronization
         # -----------------------------------------------------
 
-        self._sync_documents()
+        # self._sync_documents()
 
         # -----------------------------------------------------
         # Number of stored chunks
@@ -583,7 +263,7 @@ class RAGService:
             ),
         )
 
-    # =========================================================
+    # ===========================================================
     # QUERY
     # =========================================================
 
@@ -693,13 +373,20 @@ class RAGService:
         # -----------------------------------------------------
 
         try:
-            result = await self.graph.ainvoke(
-                initial_state,
-                config=config,
+            result = await asyncio.wait_for(
+                self.graph.ainvoke(
+                    initial_state,
+                    config=config,
+                ),
+                timeout=Config.get_graph_timeout(),
             )
 
         except Exception as exc:
             elapsed = (time.perf_counter() - start_time) * 1000
+
+            GRAPH_LATENCY.labels(
+                outcome="error",
+            ).observe(elapsed / 1000)
 
             log_event(
                 logger,
@@ -751,9 +438,8 @@ class RAGService:
 # GLOBAL SERVICE
 # =============================================================
 
-DATA_DIRECTORY = Path("data")
 
-rag_service = RAGService(data_directory=DATA_DIRECTORY)
+rag_service = RAGService()
 
 
 # =============================================================
@@ -1379,6 +1065,7 @@ async def query(
         conversation_id=conversation_id,
         next_step=result.get("next_step"),
         documents=documents,
+        request_id=request_id,
         document_relevance=result.get("document_relevance"),
         grade_reason=result.get("grade_reason"),
         reflection=result.get("reflection"),

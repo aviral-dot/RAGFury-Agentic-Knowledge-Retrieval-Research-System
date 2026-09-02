@@ -53,12 +53,21 @@ class Config:
             model=cls.LLM_MODEL, groq_api_key=cls.GROQ_API_KEY, temperature=0
         )
 
+    @staticmethod
+    def get_cors_origins() -> list[str]:
+        value = os.getenv(
+            "CORS_ALLOWED_ORIGINS",
+            "http://localhost:8501",
+        )
 
-@staticmethod
-def get_cors_origins() -> list[str]:
-    value = os.getenv(
-        "CORS_ALLOWED_ORIGINS",
-        "http://localhost:8501",
-    )
+        return [origin.strip() for origin in value.split(",") if origin.strip()]
 
-    return [origin.strip() for origin in value.split(",") if origin.strip()]
+    @classmethod
+    def get_graph_timeout(cls) -> float:
+
+        return float(
+            os.getenv(
+                "GRAPH_TIMEOUT_SECONDS",
+                "120",
+            )
+        )
