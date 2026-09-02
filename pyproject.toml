@@ -32,12 +32,16 @@ dependencies = [
     "deepeval>=4.2.0",
     "langchain-openai>=0.3.35",
     "nltk>=3.10.3",
+    "langsmith",
     "nemoguardrails>=0.24.0",
     "rq>=2.11.0",
     "langgraph-cli[inmem]>=0.4.13",
     "langchain-classic>=1.0.8",
     "langchain-qdrant>=1.1.0",
+    "prometheus-client>=0.22.0",
     "qdrant-client[fastembed]>=1.19.0",
+    "prometheus-client",
+    "prometheus-fastapi-instrumentator",
 ]
 
 [dependency-groups]

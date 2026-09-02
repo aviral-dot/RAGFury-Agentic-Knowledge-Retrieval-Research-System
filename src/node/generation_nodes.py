@@ -4,6 +4,7 @@ import logging
 import time
 
 from src.state.rag_state import RAGState
+from src.utils.llm_observability import invoke_llm
 from src.utils.loggers import (
     configure_logging,
     get_logger,
@@ -133,7 +134,11 @@ Instructions:
         )
 
         try:
-            response = await self.llm.ainvoke(prompt)
+            response = await invoke_llm(
+                llm=self.llm,
+                operation="generation",
+                invoke=lambda: self.llm.ainvoke(prompt),
+            )
 
         except Exception as exc:
             llm_elapsed = (time.perf_counter() - llm_start_time) * 1000

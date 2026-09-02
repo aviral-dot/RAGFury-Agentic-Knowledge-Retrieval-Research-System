@@ -5,6 +5,7 @@ import time
 
 from pydantic import BaseModel, Field
 
+from src.utils.llm_observability import invoke_llm
 from src.state.rag_state import RAGState
 from src.utils.loggers import (
     configure_logging,
@@ -187,7 +188,11 @@ Return a brief reason explaining your decision.
         )
 
         try:
-            result = await self.grader.ainvoke(prompt)
+            result = await invoke_llm(
+              llm=self.llm,
+              operation="grading",
+              invoke=lambda: self.grader.ainvoke(prompt),
+            )
 
         except Exception as exc:
             llm_elapsed = (time.perf_counter() - llm_start_time) * 1000

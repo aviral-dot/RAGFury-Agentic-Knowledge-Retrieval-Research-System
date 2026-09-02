@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from src.utils.llm_observability import invoke_llm
 from src.utils.loggers import (
     configure_logging,
     get_logger,
@@ -311,17 +312,21 @@ chat
         )
 
         try:
-            response = await self.agent.ainvoke(
-                [
-                    {
-                        "role": "system",
-                        "content": self.system_prompt,
-                    },
-                    {
-                        "role": "user",
-                        "content": question,
-                    },
-                ]
+            response = await invoke_llm(
+                llm=self.llm,
+                operation="agent",
+                invoke=lambda: self.agent.ainvoke(
+                    [
+                        {
+                            "role": "system",
+                            "content": self.system_prompt,
+                        },
+                        {
+                            "role": "user",
+                            "content": question,
+                        },
+                    ]
+                ),
             )
 
         except Exception as exc:

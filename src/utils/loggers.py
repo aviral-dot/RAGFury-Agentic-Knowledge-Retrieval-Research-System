@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from src.utils.observability import get_request_context
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 LOG_DIR = PROJECT_ROOT / "logs"
@@ -44,6 +46,12 @@ class JsonFormatter(logging.Formatter):
 
         if context:
             log_entry.update(context)
+
+        request_context = get_request_context()
+
+        for key, value in request_context.items():
+            if value is not None and key not in log_entry:
+                log_entry[key] = value
 
         if record.exc_info:
             exc_type, exc_value, _ = record.exc_info

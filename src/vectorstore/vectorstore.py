@@ -27,6 +27,14 @@ from src.utils.loggers import (
     get_logger,
     log_event,
 )
+from src.utils.metrics import (
+    RERANKER_INPUT_DOCUMENTS,
+    RERANKER_LATENCY,
+    RERANKER_OUTPUT_DOCUMENTS,
+    RETRIEVAL_ATTEMPTS,
+    RETRIEVAL_LATENCY,
+    RETRIEVED_DOCUMENTS,
+)
 
 configure_logging()
 
@@ -753,6 +761,8 @@ class VectorStore:
 
         start_time = time.perf_counter()
 
+        RERANKER_INPUT_DOCUMENTS.observe(len(documents))
+
         log_event(
             logger,
             level=logging.DEBUG,
@@ -791,7 +801,12 @@ class VectorStore:
 
             result = filtered[:k]
 
-            elapsed = (time.perf_counter() - start_time) * 1000
+            RERANKER_OUTPUT_DOCUMENTS.observe(len(documents))
+
+            elapsed_seconds = time.perf_counter() - start_time
+            elapsed_ms = elapsed_seconds * 1000
+
+            RERANKER_LATENCY.observe(elapsed_seconds)
 
             top_score = float(ranked_documents[0][0]) if ranked_documents else None
 
@@ -806,7 +821,7 @@ class VectorStore:
                 min_score=min_score,
                 top_score=(round(top_score, 4) if top_score is not None else None),
                 duration_ms=round(
-                    elapsed,
+                    elapsed_ms,
                     2,
                 ),
             )
@@ -822,7 +837,6 @@ class VectorStore:
                         "source": document.metadata.get("source"),
                         "chunk_id": document.metadata.get("chunk_id"),
                         "chunk_index": document.metadata.get("chunk_index"),
-                        "content_preview": document.page_content[:500],
                     }
                     for rank, (score, document) in enumerate(
                         ranked_documents,
@@ -833,7 +847,10 @@ class VectorStore:
             return result
 
         except Exception as exc:
-            elapsed = (time.perf_counter() - start_time) * 1000
+            elapsed_seconds = time.perf_counter() - start_time
+            elapsed_ms = elapsed_seconds * 1000
+
+            RERANKER_LATENCY.observe(elapsed_seconds)
 
             log_event(
                 logger,
@@ -843,7 +860,7 @@ class VectorStore:
                 k=k,
                 error_type=type(exc).__name__,
                 duration_ms=round(
-                    elapsed,
+                    elapsed_ms,
                     2,
                 ),
             )
@@ -876,6 +893,8 @@ class VectorStore:
 
         start_time = time.perf_counter()
 
+        RETRIEVAL_ATTEMPTS.inc()
+
         log_event(
             logger,
             level=logging.INFO,
@@ -891,6 +910,8 @@ class VectorStore:
             # -------------------------------------------------
 
             documents = await self.hybrid_retriever.ainvoke(query)
+
+            RETRIEVED_DOCUMENTS.observe(len(documents))
 
             log_event(
                 logger,
@@ -922,7 +943,10 @@ class VectorStore:
                 k=k,
             )
 
-            elapsed = (time.perf_counter() - start_time) * 1000
+            elapsed_seconds = time.perf_counter() - start_time
+            elapsed_ms = elapsed_seconds * 1000
+
+            RETRIEVAL_LATENCY.observe(elapsed_seconds)
 
             log_event(
                 logger,
@@ -933,7 +957,7 @@ class VectorStore:
                 retrieval_k=self.retrieval_k,
                 rerank_k=k,
                 duration_ms=round(
-                    elapsed,
+                    elapsed_ms,
                     2,
                 ),
             )
@@ -941,7 +965,10 @@ class VectorStore:
             return result
 
         except Exception as exc:
-            elapsed = (time.perf_counter() - start_time) * 1000
+            elapsed_seconds = time.perf_counter() - start_time
+            elapsed_ms = elapsed_seconds * 1000
+
+            RETRIEVAL_LATENCY.observe(elapsed_seconds)
 
             log_event(
                 logger,
@@ -950,7 +977,7 @@ class VectorStore:
                 k=k,
                 error_type=type(exc).__name__,
                 duration_ms=round(
-                    elapsed,
+                    elapsed_ms,
                     2,
                 ),
             )

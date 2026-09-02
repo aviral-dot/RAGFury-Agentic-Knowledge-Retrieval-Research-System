@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.postgres.aio import (
     AsyncPostgresSaver,
 )
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from api.schemas import (
     HealthResponse,
@@ -41,6 +42,16 @@ from src.utils.loggers import (
     configure_logging,
     get_logger,
     log_event,
+)
+from src.utils.metrics import (
+    ABSTENTION_COUNT,
+    ERROR_COUNT,
+    GRAPH_LATENCY,
+    REQUESTS_IN_PROGRESS,
+)
+from src.utils.observability import (
+    clear_observability_context,
+    set_request_context,
 )
 from src.vectorstore.vectorstore import VectorStore
 
@@ -599,6 +610,12 @@ class RAGService:
 
         start_time = time.perf_counter()
 
+        set_request_context(
+            request_id=request_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+
         log_event(
             logger,
             level=logging.INFO,
@@ -657,7 +674,18 @@ class RAGService:
         config = {
             "configurable": {
                 "thread_id": thread_id,
-            }
+            },
+            "metadata": {
+                "request_id": request_id,
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "service": "ragfury",
+                "environment": "development",
+            },
+            "tags": [
+                "ragfury",
+                "agentic-rag",
+            ],
         }
 
         # -----------------------------------------------------
@@ -692,6 +720,12 @@ class RAGService:
             )
 
             raise
+
+        finally:
+            clear_observability_context()
+
+        if result.get("next_step") == "abstain":
+            ABSTENTION_COUNT.inc()
 
         elapsed = (time.perf_counter() - start_time) * 1000
 
@@ -815,7 +849,7 @@ async def lifespan(
             # -------------------------------------------------
 
             try:
-                await asyncio.to_thread(rag_service.initialize())
+                await asyncio.to_thread(rag_service.initialize)
 
             except Exception as exc:
                 log_event(
@@ -881,6 +915,11 @@ app = FastAPI(
     description=("Agentic Knowledge Retrieval & Research System"),
     version="1.0.0",
     lifespan=lifespan,
+)
+
+Instrumentator().instrument(app).expose(
+    app,
+    endpoint="/metrics",
 )
 
 
@@ -977,6 +1016,8 @@ async def query(
     request: QueryRequest,
 ):
     """Execute a question through RAGFury."""
+
+    REQUESTS_IN_PROGRESS.inc()
 
     request_id = uuid.uuid4().hex
 
@@ -1164,6 +1205,15 @@ async def query(
     except Exception as exc:
         elapsed = (time.perf_counter() - request_start_time) * 1000
 
+        ERROR_COUNT.labels(
+            component="graph",
+            error_type=type(exc).__name__,
+        ).inc()
+
+        GRAPH_LATENCY.labels(
+            outcome="error",
+        ).observe(elapsed / 1000)
+
         log_event(
             logger,
             level=logging.ERROR,
@@ -1190,6 +1240,9 @@ async def query(
                 "request_id": request_id,
             },
         ) from exc
+
+    finally:
+        REQUESTS_IN_PROGRESS.dec()
 
     # =========================================================
     # OUTPUT GUARDRAIL
