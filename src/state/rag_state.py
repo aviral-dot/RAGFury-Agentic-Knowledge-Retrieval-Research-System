@@ -27,9 +27,5 @@ class RAGState(TypedDict, total=False):
 
     answer: str
 
-    reflection: str
-    reflection_passed: bool
-    reflection_attempts: int
-
     retrieval_abstained: bool
     abstention_reason: str
