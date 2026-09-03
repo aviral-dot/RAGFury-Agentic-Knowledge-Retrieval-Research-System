@@ -249,6 +249,28 @@ class MemoryManager:
         )
 
         try:
+            redis_start_time = time.perf_counter()
+
+            await asyncio.to_thread(
+                self.redis.add_turn,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                user_message=user_message,
+                assistant_message=assistant_message,
+            )
+
+            redis_elapsed = (time.perf_counter() - redis_start_time) * 1000
+
+            log_event(
+                logger,
+                level=logging.DEBUG,
+                event="memory.turn.save.redis.completed",
+                duration_ms=round(
+                    redis_elapsed,
+                    2,
+                ),
+            )
+
             result = await asyncio.to_thread(
                 self.mem0.add,
                 user_id=user_id,
