@@ -1027,7 +1027,7 @@ async def query(
         next_step=result.get("next_step"),
         documents=documents,
         request_id=request_id,
-        run_id=result.get("_langsmith_run_id"),
+        run_id=result.get("run_id"),
         document_relevance=result.get("document_relevance"),
         grade_reason=result.get("grade_reason"),
         reflection=result.get("reflection"),

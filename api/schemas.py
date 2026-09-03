@@ -16,8 +16,6 @@ class QueryRequest(BaseModel):
         examples=["How much sick leave can an employee take?"],
     )
 
-    run_id: str | None = None
-
     user_id: str = Field(
         ...,
         min_length=1,
@@ -51,6 +49,10 @@ class QueryResponse(BaseModel):
     question: str
 
     answer: str
+
+    run_id: str | None = None
+
+    request_id: str
 
     # Generated/active conversation ID
     conversation_id: str
