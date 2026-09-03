@@ -47,7 +47,7 @@ class GradingNodes:
 
         self.llm = llm
 
-        self.grader = llm.with_structured_output(DocumentGrade)
+        self.grader = llm.with_structured_output(DocumentGrade, method="json_schema")
 
         log_event(
             logger,
