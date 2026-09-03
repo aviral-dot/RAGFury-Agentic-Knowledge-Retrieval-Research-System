@@ -404,7 +404,7 @@ class RAGService:
             ),
         )
 
-        result["_langsmith_run_id"] = run_id
+        result["run_id"] = run_id
 
         return result
 
