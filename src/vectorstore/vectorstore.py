@@ -95,11 +95,12 @@ class RerankingRetriever(BaseRetriever):
 
             log_event(
                 logger,
-                level=logging.DEBUG,
+                level=logging.INFO,
                 event="retrieval.reranking_retriever.completed",
-                input_document_count=len(documents),
-                output_document_count=len(result),
-                k=self.k,
+                candidate_count=len(documents),
+                final_document_count=len(result),
+                retrieval_k=self.vector_store.retrieval_k,
+                rerank_k=self.k,
                 duration_ms=round(elapsed, 2),
             )
 
@@ -144,7 +145,7 @@ class VectorStore:
         qdrant_url: str | None = None,
         collection_name: str = "ragfury_documents",
         qdrant_api_key: str | None = None,
-        retrieval_k: int = 10,
+        retrieval_k: int = 5,
         rerank_k: int = 2,
         mode: str = "query",
     ):

@@ -5,12 +5,6 @@ import time
 
 from langsmith import traceable
 
-from src.guardrails.exceptions import (
-    MaliciousDocumentError,
-)
-from src.guardrails.guardrail_manager import (
-    check_retrieved_documents,
-)
 from src.state.rag_state import RAGState
 from src.utils.loggers import (
     configure_logging,
@@ -164,88 +158,6 @@ class RAGNodes:
                 retrieval_attempt=retrieval_attempts,
             )
 
-        # -----------------------------------------------------
-        # RETRIEVAL SECURITY GUARDRAIL
-        # -----------------------------------------------------
-
-        guardrail_start = time.perf_counter()
-
-        log_event(
-            logger,
-            level=logging.DEBUG,
-            event="rag.retrieval.guardrail.started",
-            document_count=document_count,
-        )
-
-        try:
-            guardrail_result = await check_retrieved_documents(docs)
-
-        except Exception as exc:
-            guardrail_elapsed = (time.perf_counter() - guardrail_start) * 1000
-
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="rag.retrieval.guardrail.failed",
-                document_count=document_count,
-                error_type=type(exc).__name__,
-                duration_ms=round(
-                    guardrail_elapsed,
-                    2,
-                ),
-            )
-
-            logger.exception(
-                "Retrieved document security guardrail failed",
-            )
-
-            raise
-
-        guardrail_elapsed = (time.perf_counter() - guardrail_start) * 1000
-
-        # -----------------------------------------------------
-        # MALICIOUS DOCUMENT
-        # -----------------------------------------------------
-
-        if not guardrail_result["safe"]:
-            reason = guardrail_result.get(
-                "reason",
-                (
-                    "The request was blocked because "
-                    "a retrieved document was identified "
-                    "as potentially malicious."
-                ),
-            )
-
-            log_event(
-                logger,
-                level=logging.WARNING,
-                event="rag.retrieval.guardrail.blocked",
-                document_count=document_count,
-                reason=reason,
-                duration_ms=round(
-                    guardrail_elapsed,
-                    2,
-                ),
-            )
-
-            raise MaliciousDocumentError(reason)
-
-        # -----------------------------------------------------
-        # SAFE → CONTINUE TO GRADER
-        # -----------------------------------------------------
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="rag.retrieval.guardrail.passed",
-            document_count=document_count,
-            duration_ms=round(
-                guardrail_elapsed,
-                2,
-            ),
-        )
-
         total_elapsed = (time.perf_counter() - start_time) * 1000
 
         log_event(
@@ -272,10 +184,5 @@ class RAGNodes:
                     2,
                 ),
                 "results": retrieval_results,
-                "guardrail_safe": True,
-                "guardrail_duration_ms": round(
-                    guardrail_elapsed,
-                    2,
-                ),
             },
         }

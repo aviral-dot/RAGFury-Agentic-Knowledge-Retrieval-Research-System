@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 from langsmith import traceable
 from nemoguardrails import LLMRails, RailsConfig
+from nemoguardrails.rails.llm.options import RailType
 
 # ============================================================
 # PROJECT CONFIGURATION
@@ -13,7 +14,6 @@ from nemoguardrails import LLMRails, RailsConfig
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 load_dotenv(PROJECT_ROOT / ".env")
-
 
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 
@@ -60,13 +60,14 @@ async def check_input(
         print("INPUT GUARDRAIL")
         print("=" * 70)
 
-        result = await rails.generate_async(
+        result = await rails.check_async(
             messages=[
                 {
                     "role": "user",
                     "content": text,
                 }
-            ]
+            ],
+            rail_types=[RailType.INPUT],
         )
 
         print("GUARDRAIL RESULT:")
@@ -331,13 +332,14 @@ async def check_output(
         print("OUTPUT GUARDRAIL")
         print("=" * 70)
 
-        result = await rails.generate_async(
+        result = await rails.check_async(
             messages=[
                 {
                     "role": "assistant",
                     "content": text,
                 }
-            ]
+            ],
+            rail_types=[RailType.OUTPUT],
         )
 
         print("GUARDRAIL RESULT:")
