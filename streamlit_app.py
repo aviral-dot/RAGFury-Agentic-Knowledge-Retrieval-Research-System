@@ -137,6 +137,33 @@ def ask_backend(question: str):
     return result
 
 
+def submit_feedback(
+    run_id: str,
+    score: float,
+):
+    """
+    Send user feedback for a specific LangSmith run
+    to the FastAPI backend.
+    """
+
+    try:
+        response = requests.post(
+            f"{API_URL}/api/v1/feedback",
+            json={
+                "run_id": run_id,
+                "score": score,
+            },
+            timeout=10,
+        )
+
+        response.raise_for_status()
+
+        return True
+
+    except requests.RequestException:
+        return False
+
+
 def display_route(route: str):
     """
     Display the route selected by the Agent.
@@ -450,12 +477,52 @@ def main():
                         "answer": answer,
                         "time": elapsed_time,
                         "route": route,
+                        "run_id": result.get("run_id"),
                     }
                 )
 
                 st.markdown("### 💡 Answer")
 
                 st.success(answer)
+
+                st.success(answer)
+
+                # =========================================================
+                # USER FEEDBACK
+                # =========================================================
+
+                run_id = result.get("run_id")
+
+                if run_id:
+                    st.markdown("**Was this answer helpful?**")
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        if st.button(
+                            "👍 Helpful",
+                            key=f"feedback_positive_{run_id}",
+                        ):
+                            if submit_feedback(
+                                run_id=run_id,
+                                score=1.0,
+                            ):
+                                st.success("Thanks for your feedback! 👍")
+                            else:
+                                st.error("Could not submit feedback.")
+
+                    with col2:
+                        if st.button(
+                            "👎 Not helpful",
+                            key=f"feedback_negative_{run_id}",
+                        ):
+                            if submit_feedback(
+                                run_id=run_id,
+                                score=0.0,
+                            ):
+                                st.success("Thanks for your feedback! 👎")
+                            else:
+                                st.error("Could not submit feedback.")
 
                 display_route(route)
 

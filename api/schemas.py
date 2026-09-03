@@ -16,6 +16,8 @@ class QueryRequest(BaseModel):
         examples=["How much sick leave can an employee take?"],
     )
 
+    run_id: str | None = None
+
     user_id: str = Field(
         ...,
         min_length=1,
@@ -104,3 +106,9 @@ class ErrorResponse(BaseModel):
     """Standard API error response."""
 
     error: ErrorDetail
+
+
+class FeedbackRequest(BaseModel):
+    run_id: str
+    score: float = Field(..., ge=0.0, le=1.0)
+    comment: str | None = None

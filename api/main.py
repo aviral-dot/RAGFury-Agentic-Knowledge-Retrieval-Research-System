@@ -12,9 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.postgres.aio import (
     AsyncPostgresSaver,
 )
+from langsmith import Client, trace
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from api.schemas import (
+    FeedbackRequest,
     HealthResponse,
     QueryRequest,
     QueryResponse,
@@ -33,6 +35,10 @@ from src.guardrails.guardrail_manager import (
     check_input,
     check_output,
 )
+from src.utils.langsmith_observability import (
+    build_trace_metadata,
+    build_trace_tags,
+)
 from src.utils.loggers import (
     configure_logging,
     get_logger,
@@ -43,6 +49,8 @@ from src.vectorstore.vectorstore import VectorStore
 configure_logging()
 
 logger = get_logger(__name__)
+
+langsmith_client = Client()
 
 
 # =============================================================
@@ -281,6 +289,18 @@ class RAGService:
 
         thread_id = f"ragfury:{user_id}:{conversation_id}"
 
+        trace_metadata = build_trace_metadata(
+            request_id=request_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            thread_id=thread_id,
+            workflow="rag",
+        )
+
+        trace_tags = build_trace_tags(
+            workflow="rag",
+        )
+
         log_event(
             logger,
             level=logging.DEBUG,
@@ -316,17 +336,8 @@ class RAGService:
             "configurable": {
                 "thread_id": thread_id,
             },
-            "metadata": {
-                "request_id": request_id,
-                "user_id": user_id,
-                "conversation_id": conversation_id,
-                "service": "ragfury",
-                "environment": "development",
-            },
-            "tags": [
-                "ragfury",
-                "agentic-rag",
-            ],
+            "metadata": trace_metadata,
+            "tags": trace_tags,
         }
 
         # -----------------------------------------------------
@@ -334,13 +345,24 @@ class RAGService:
         # -----------------------------------------------------
 
         try:
-            result = await asyncio.wait_for(
-                self.graph.ainvoke(
-                    initial_state,
-                    config=config,
-                ),
-                timeout=Config.get_graph_timeout(),
-            )
+            with trace(
+                name="RAGFury Query",
+                run_type="chain",
+                inputs={
+                    "question": question,
+                },
+                metadata=trace_metadata,
+                tags=trace_tags,
+            ) as run:
+                result = await asyncio.wait_for(
+                    self.graph.ainvoke(
+                        initial_state,
+                        config=config,
+                    ),
+                    timeout=Config.get_graph_timeout(),
+                )
+
+                run_id = str(run.id)
 
         except Exception as exc:
             elapsed = (time.perf_counter() - start_time) * 1000
@@ -381,6 +403,8 @@ class RAGService:
                 2,
             ),
         )
+
+        result["_langsmith_run_id"] = run_id
 
         return result
 
@@ -1003,6 +1027,7 @@ async def query(
         next_step=result.get("next_step"),
         documents=documents,
         request_id=request_id,
+        run_id=result.get("_langsmith_run_id"),
         document_relevance=result.get("document_relevance"),
         grade_reason=result.get("grade_reason"),
         reflection=result.get("reflection"),
@@ -1014,3 +1039,27 @@ async def query(
             4,
         ),
     )
+
+
+@app.post("/api/v1/feedback")
+async def submit_feedback(request: FeedbackRequest):
+    try:
+        langsmith_client.create_feedback(
+            run_id=request.run_id,
+            key="user-feedback",
+            score=request.score,
+            comment=request.comment,
+        )
+
+        return {
+            "status": "success",
+            "run_id": request.run_id,
+        }
+
+    except Exception as exc:
+        logger.exception("Failed to submit LangSmith feedback")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to submit feedback.",
+        ) from exc
