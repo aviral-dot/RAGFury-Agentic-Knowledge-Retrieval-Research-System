@@ -44,6 +44,7 @@ class GenerationNodes:
     # =========================================================
     # ANSWER GENERATION
     # =========================================================
+
     @traceable(
         name="RAGFury Answer Generation",
         run_type="chain",

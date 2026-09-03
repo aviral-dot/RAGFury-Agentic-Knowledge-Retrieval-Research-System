@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from dotenv import load_dotenv
+from langsmith import traceable
 from nemoguardrails import LLMRails, RailsConfig
 
 # ============================================================
@@ -36,6 +37,10 @@ rails = LLMRails(config)
 # ============================================================
 
 
+@traceable(
+    name="NeMo Input Guardrail",
+    run_type="chain",
+)
 async def check_input(
     text: str,
 ) -> bool:
@@ -97,6 +102,10 @@ async def check_input(
 # ============================================================
 
 
+@traceable(
+    name="NeMo Retrieval Guardrail",
+    run_type="chain",
+)
 async def check_retrieved_documents(
     documents: List[Any],
 ) -> Dict[str, Any]:
@@ -298,6 +307,10 @@ DOCUMENT {index}
 # ============================================================
 
 
+@traceable(
+    name="NeMo Output Guardrail",
+    run_type="chain",
+)
 async def check_output(
     text: str,
 ) -> bool:

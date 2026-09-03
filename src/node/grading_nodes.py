@@ -60,6 +60,7 @@ class GradingNodes:
     # =========================================================
     # DOCUMENT GRADING
     # =========================================================
+
     @traceable(
         name="RAGFury Document Grading",
         run_type="chain",
