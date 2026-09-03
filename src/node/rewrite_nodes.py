@@ -3,6 +3,8 @@
 import logging
 import time
 
+from langsmith import traceable
+
 from src.state.rag_state import RAGState
 from src.utils.loggers import (
     configure_logging,
@@ -42,7 +44,10 @@ class RewriteNodes:
     # =========================================================
     # QUERY REWRITING
     # =========================================================
-
+    @traceable(
+        name="RAGFury Query Rewrite",
+        run_type="chain",
+    )
     async def rewrite_query(
         self,
         state: RAGState,

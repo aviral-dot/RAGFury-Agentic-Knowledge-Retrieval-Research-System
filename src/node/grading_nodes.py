@@ -3,6 +3,7 @@
 import logging
 import time
 
+from langsmith import traceable
 from pydantic import BaseModel, Field
 
 from src.state.rag_state import RAGState
@@ -59,7 +60,10 @@ class GradingNodes:
     # =========================================================
     # DOCUMENT GRADING
     # =========================================================
-
+    @traceable(
+        name="RAGFury Document Grading",
+        run_type="chain",
+    )
     async def grade_documents(
         self,
         state: RAGState,

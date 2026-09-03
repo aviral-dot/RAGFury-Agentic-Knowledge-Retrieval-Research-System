@@ -1,4 +1,4 @@
-from typing import List, TypedDict
+from typing import Any, List, TypedDict
 
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
@@ -29,3 +29,5 @@ class RAGState(TypedDict, total=False):
 
     retrieval_abstained: bool
     abstention_reason: str
+
+    retrieval_metadata: dict[str, Any]

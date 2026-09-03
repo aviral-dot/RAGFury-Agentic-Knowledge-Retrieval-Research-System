@@ -18,6 +18,7 @@ from langchain_qdrant import (
     QdrantVectorStore,
     RetrievalMode,
 )
+from langsmith import traceable
 from pydantic import ConfigDict
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder
@@ -58,6 +59,10 @@ class RerankingRetriever(BaseRetriever):
             "RerankingRetriever is async-only. Use ainvoke() instead of invoke()."
         )
 
+    @traceable(
+        name="RAGFury Hybrid Retrieval + Reranking",
+        run_type="retriever",
+    )
     async def _aget_relevant_documents(
         self,
         query: str,

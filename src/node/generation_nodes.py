@@ -3,6 +3,8 @@
 import logging
 import time
 
+from langsmith import traceable
+
 from src.state.rag_state import RAGState
 from src.utils.loggers import (
     configure_logging,
@@ -42,7 +44,10 @@ class GenerationNodes:
     # =========================================================
     # ANSWER GENERATION
     # =========================================================
-
+    @traceable(
+        name="RAGFury Answer Generation",
+        run_type="chain",
+    )
     async def generate_answer(
         self,
         state: RAGState,

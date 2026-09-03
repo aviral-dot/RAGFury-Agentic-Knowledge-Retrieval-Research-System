@@ -4,6 +4,7 @@ import logging
 import time
 from typing import Literal
 
+from langsmith import traceable
 from pydantic import BaseModel, Field
 
 from src.utils.loggers import (
@@ -267,6 +268,10 @@ chat
     # ROUTE
     # =========================================================
 
+    @traceable(
+        name="RAGFury Router Decision",
+        run_type="chain",
+    )
     async def route(
         self,
         question: str,
@@ -311,19 +316,17 @@ chat
         )
 
         try:
-            response = (
-                await self.agent.ainvoke(
-                    [
-                        {
-                            "role": "system",
-                            "content": self.system_prompt,
-                        },
-                        {
-                            "role": "user",
-                            "content": question,
-                        },
-                    ]
-                ),
+            response = await self.agent.ainvoke(
+                [
+                    {
+                        "role": "system",
+                        "content": self.system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": question,
+                    },
+                ]
             )
 
         except Exception as exc:

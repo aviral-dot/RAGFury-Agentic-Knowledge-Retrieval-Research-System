@@ -4,6 +4,7 @@ import logging
 import time
 
 from langgraph.graph import END, StateGraph
+from langsmith import traceable
 
 from src.agent.agent import Agent
 from src.node.chat_nodes import ChatNode
@@ -310,6 +311,10 @@ class GraphBuilder:
     # AGENT NODE
     # =========================================================
 
+    @traceable(
+        name="RAGFury Router",
+        run_type="chain",
+    )
     async def agent_node(
         self,
         state: RAGState,
@@ -417,6 +422,10 @@ class GraphBuilder:
     # RETRIEVE NODE
     # =========================================================
 
+    @traceable(
+        name="RAGFury Retrieve",
+        run_type="retriever",
+    )
     async def retrieve_node(
         self,
         state: RAGState,
@@ -481,6 +490,10 @@ class GraphBuilder:
     # GRADE NODE
     # =========================================================
 
+    @traceable(
+        name="RAGFury Grade",
+        run_type="chain",
+    )
     async def grade_node(
         self,
         state: RAGState,
@@ -538,7 +551,10 @@ class GraphBuilder:
     # =========================================================
     # REWRITE NODE
     # =========================================================
-
+    @traceable(
+        name="RAGFury rewrite",
+        run_type="chain",
+    )
     async def rewrite_node(
         self,
         state: RAGState,
@@ -595,7 +611,10 @@ class GraphBuilder:
     # =========================================================
     # GENERATE NODE
     # =========================================================
-
+    @traceable(
+        name="RAGFury Generate",
+        run_type="chain",
+    )
     async def generate_node(
         self,
         state: RAGState,
@@ -658,7 +677,10 @@ class GraphBuilder:
     # =========================================================
     # CHAT NODE
     # =========================================================
-
+    @traceable(
+        name="RAGFury Chat",
+        run_type="chain",
+    )
     async def run_chat_node(
         self,
         state: RAGState,

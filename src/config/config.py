@@ -71,3 +71,18 @@ class Config:
                 "120",
             )
         )
+
+    @classmethod
+    def get_environment(cls) -> str:
+        return os.getenv(
+            "APP_ENV",
+            "development",
+        )
+
+    @classmethod
+    def get_app_version(cls) -> str:
+
+        return os.getenv(
+            "APP_VERSION",
+            "unknown",
+        )
