@@ -86,3 +86,12 @@ class Config:
             "APP_VERSION",
             "unknown",
         )
+
+    @classmethod
+    def get_global_rate_limit_per_minute(cls) -> int:
+        return int(
+            os.getenv(
+                "GLOBAL_RATE_LIMIT_PER_MINUTE",
+                "30",
+            )
+        )

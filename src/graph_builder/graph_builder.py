@@ -758,9 +758,8 @@ class GraphBuilder:
         state: RAGState,
     ):
         """
-        Stop the RAG workflow when the maximum number of
-        retrieval attempts has been exhausted without finding
-        sufficiently relevant documents.
+        Stop the RAG workflow when no relevant information
+        is available in the document collection.
         """
 
         request_id = state.get("request_id")
@@ -770,10 +769,27 @@ class GraphBuilder:
             0,
         )
 
-        abstention_reason = (
-            "Maximum retrieval attempts exhausted without "
-            "finding sufficiently relevant documents."
+        retrieved_docs = state.get(
+            "retrieved_docs",
+            [],
         )
+
+        if not retrieved_docs:
+            answer = (
+                "No documents related to your question were found "
+                "in the available document collection."
+            )
+
+            abstention_reason = "no_documents_retrieved"
+
+        else:
+            answer = (
+                "I’m sorry, but I couldn’t find sufficiently "
+                "relevant information in the available documents "
+                "to answer your question reliably."
+            )
+
+            abstention_reason = "maximum_retrieval_attempts_exhausted"
 
         log_event(
             logger,
@@ -782,16 +798,11 @@ class GraphBuilder:
             node="abstain",
             request_id=request_id,
             retrieval_attempts=retrieval_attempts,
-            max_retrieval_attempts=MAX_RETRIEVAL_ATTEMPTS,
             reason=abstention_reason,
         )
 
         return {
-            "answer": (
-                "I’m sorry, but I couldn’t find sufficiently "
-                "relevant information in the available documents "
-                "to answer your question reliably."
-            ),
+            "answer": answer,
             "retrieval_abstained": True,
             "abstention_reason": abstention_reason,
         }
@@ -851,6 +862,50 @@ class GraphBuilder:
         )
 
         raise ValueError(f"Invalid next_step selected by agent: {next_step}")
+
+    @staticmethod
+    def route_after_retrieval(state: RAGState):
+        """
+        Decide whether document grading is necessary.
+
+        No retrieved documents:
+            -> abstain immediately
+
+        Retrieved documents:
+            -> grade
+        """
+
+        request_id = state.get("request_id")
+
+        retrieved_docs = state.get(
+            "retrieved_docs",
+            [],
+        )
+
+        if not retrieved_docs:
+            log_event(
+                logger,
+                level=logging.WARNING,
+                event="graph.routing.decision",
+                node="retrieve",
+                request_id=request_id,
+                destination="abstain",
+                reason="no_documents_retrieved",
+            )
+
+            return "abstain"
+
+        log_event(
+            logger,
+            level=logging.INFO,
+            event="graph.routing.decision",
+            node="retrieve",
+            request_id=request_id,
+            destination="grade",
+            document_count=len(retrieved_docs),
+        )
+
+        return "grade"
 
     # =========================================================
     # ROUTE AFTER GRADER
@@ -997,9 +1052,13 @@ class GraphBuilder:
                 },
             )
 
-            workflow.add_edge(
+            workflow.add_conditional_edges(
                 "retrieve",
-                "grade",
+                self.route_after_retrieval,
+                {
+                    "grade": "grade",
+                    "abstain": "abstain",
+                },
             )
 
             workflow.add_conditional_edges(

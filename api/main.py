@@ -7,7 +7,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.postgres.aio import (
     AsyncPostgresSaver,
@@ -34,6 +34,9 @@ from src.guardrails.exceptions import (
 from src.guardrails.guardrail_manager import (
     check_input,
     check_output,
+)
+from src.rate_limit.rate_limiter import (
+    GlobalRateLimiter,
 )
 from src.utils.langsmith_observability import (
     build_trace_metadata,
@@ -416,6 +419,12 @@ class RAGService:
 
 rag_service = RAGService()
 
+global_rate_limiter = GlobalRateLimiter(
+    redis_url=Config.REDIS_URL,
+    limit=Config.get_global_rate_limit_per_minute(),
+    window_seconds=60,
+)
+
 
 # =============================================================
 # FASTAPI LIFESPAN
@@ -556,6 +565,13 @@ async def lifespan(
         # -----------------------------------------------------
         # Clear application references
         # -----------------------------------------------------
+        try:
+            await global_rate_limiter.close()
+
+        except Exception:
+            logger.exception(
+                "Failed to close global rate limiter",
+            )
 
         rag_service.checkpointer = None
         rag_service.graph = None
@@ -673,10 +689,80 @@ async def system_info():
 )
 async def query(
     request: QueryRequest,
+    response: Response,
 ):
     """Execute a question through RAGFury."""
 
     request_id = uuid.uuid4().hex
+
+    # =========================================================
+    # GLOBAL RATE LIMIT
+    # =========================================================
+
+    try:
+        rate_limit_result = await global_rate_limiter.check(
+            request_id=request_id,
+        )
+
+    except Exception as exc:
+        log_event(
+            logger,
+            level=logging.ERROR,
+            event="rate_limit.redis_error",
+            request_id=request_id,
+            error_type=type(exc).__name__,
+        )
+
+        logger.exception(
+            "Global rate limiter failed",
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "RATE_LIMIT_SERVICE_UNAVAILABLE",
+                "message": (
+                    "Request protection service is temporarily "
+                    "unavailable. Please try again later."
+                ),
+                "request_id": request_id,
+            },
+        ) from exc
+
+    # =========================================================
+    # RATE LIMIT HEADERS
+    # =========================================================
+
+    response.headers["X-RateLimit-Limit"] = str(rate_limit_result.limit)
+
+    response.headers["X-RateLimit-Remaining"] = str(rate_limit_result.remaining)
+
+    response.headers["X-RateLimit-Reset"] = str(rate_limit_result.retry_after)
+
+    if not rate_limit_result.allowed:
+        log_event(
+            logger,
+            level=logging.WARNING,
+            event="rate_limit.exceeded",
+            request_id=request_id,
+            limit=rate_limit_result.limit,
+            remaining=rate_limit_result.remaining,
+            retry_after=rate_limit_result.retry_after,
+        )
+
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "GLOBAL_RATE_LIMIT_EXCEEDED",
+                "message": ("Too many requests. Please try again later."),
+                "request_id": request_id,
+            },
+            headers={
+                "Retry-After": str(rate_limit_result.retry_after),
+                "X-RateLimit-Limit": str(rate_limit_result.limit),
+                "X-RateLimit-Remaining": str(rate_limit_result.remaining),
+            },
+        )
 
     request_start_time = time.perf_counter()
 
