@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import time
+import uuid
 from typing import List
 
 from langchain_core.callbacks import (
@@ -28,7 +29,6 @@ from src.utils.loggers import (
     get_logger,
     log_event,
 )
-from src.vectorstore.documents_ids import build_document_id
 
 configure_logging()
 
@@ -445,12 +445,12 @@ class VectorStore:
         """
         Add document chunks to Qdrant.
 
-        Each document is stored with:
+        Qdrant point IDs are UUIDs.
+        Citation identity is preserved separately in document metadata:
 
-            dense vector
-            sparse BM25 vector
-            document text
-            metadata
+        source
+        page
+        chunk_id
         """
 
         if not documents:
@@ -474,81 +474,75 @@ class VectorStore:
         )
 
         try:
-            # -------------------------------------------------
-            # Create collection from first document if needed
-            # -------------------------------------------------
-
             collection_exists = self.qdrant_client.collection_exists(
                 self.collection_name
             )
+
+            # -------------------------------------------------
+            # Build valid Qdrant point IDs
+            # -------------------------------------------------
+
+            ids: list[str] = []
+
+            for document in documents:
+                source = str(document.metadata["source"])
+
+                chunk_id = str(document.metadata["chunk_id"])
+
+                # Citation identity stays in metadata.
+                #
+                # Qdrant itself requires a UUID/integer
+                # point ID, so do NOT use chunk_id here.
+                document.metadata["source"] = source
+                document.metadata["chunk_id"] = chunk_id
+
+                ids.append(str(uuid.uuid4()))
+
+            # -------------------------------------------------
+            # Create collection
+            # -------------------------------------------------
 
             if not collection_exists:
                 log_event(
                     logger,
                     level=logging.INFO,
                     event="vectorstore.qdrant.collection.creating",
-                    collection_name=(self.collection_name),
+                    collection_name=self.collection_name,
                 )
-
-                ids = []
-
-            for document in documents:
-                source = str(document.metadata["source"])
-                chunk_id = str(document.metadata["chunk_id"])
-
-                document_id = build_document_id(
-                    source=source,
-                    chunk_id=chunk_id,
-                )
-
-                ids.append(document_id)
 
                 self.vectorstore = QdrantVectorStore.from_documents(
                     documents=documents,
                     embedding=self.embedding,
-                    sparse_embedding=(self.sparse_embedding),
+                    sparse_embedding=self.sparse_embedding,
                     ids=ids,
                     url=self.qdrant_url,
                     api_key=self.qdrant_api_key,
-                    collection_name=(self.collection_name),
-                    retrieval_mode=(RetrievalMode.HYBRID),
+                    collection_name=self.collection_name,
+                    retrieval_mode=RetrievalMode.HYBRID,
                 )
 
                 log_event(
                     logger,
                     level=logging.INFO,
                     event="vectorstore.qdrant.collection.created",
-                    collection_name=(self.collection_name),
+                    collection_name=self.collection_name,
                     document_count=len(documents),
                 )
 
-            else:
-                # -------------------------------------------------
-                # Existing collection
-                # -------------------------------------------------
+            # -------------------------------------------------
+            # Existing collection
+            # -------------------------------------------------
 
+            else:
                 if self.vectorstore is None:
                     self.vectorstore = QdrantVectorStore.from_existing_collection(
                         embedding=self.embedding,
-                        sparse_embedding=(self.sparse_embedding),
-                        collection_name=(self.collection_name),
+                        sparse_embedding=self.sparse_embedding,
+                        collection_name=self.collection_name,
                         url=self.qdrant_url,
                         api_key=self.qdrant_api_key,
-                        retrieval_mode=(RetrievalMode.HYBRID),
+                        retrieval_mode=RetrievalMode.HYBRID,
                     )
-
-                ids = []
-
-                for document in documents:
-                    source = str(document.metadata["source"])
-                    chunk_id = str(document.metadata["chunk_id"])
-
-                    document_id = build_document_id(
-                        source=source,
-                        chunk_id=chunk_id,
-                    )
-
-                    ids.append(document_id)
 
                 self.vectorstore.add_documents(
                     documents=documents,
@@ -563,10 +557,7 @@ class VectorStore:
                 event="vectorstore.documents.add.completed",
                 document_count=len(documents),
                 collection_name=self.collection_name,
-                duration_ms=round(
-                    elapsed,
-                    2,
-                ),
+                duration_ms=round(elapsed, 2),
             )
 
         except Exception as exc:
@@ -579,10 +570,7 @@ class VectorStore:
                 document_count=len(documents),
                 collection_name=self.collection_name,
                 error_type=type(exc).__name__,
-                duration_ms=round(
-                    elapsed,
-                    2,
-                ),
+                duration_ms=round(elapsed, 2),
             )
 
             logger.exception("Failed to add documents to Qdrant")
