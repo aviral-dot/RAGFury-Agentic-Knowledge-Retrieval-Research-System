@@ -110,7 +110,7 @@ class GenerationNodes:
                 f"{content}"
             )
 
-            return "\n\n---\n\n".join(context_parts)
+        return "\n\n---\n\n".join(context_parts)
 
     @traceable(
         name="RAGFury Answer Generation",
