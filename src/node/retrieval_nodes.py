@@ -5,6 +5,7 @@ import time
 
 from langsmith import traceable
 
+from src.models.citation import CitationSource
 from src.state.rag_state import RAGState
 from src.utils.loggers import (
     configure_logging,
@@ -58,6 +59,52 @@ class RAGNodes:
             "source": metadata.get("source"),
             "score": metadata.get("score"),
         }
+
+    @staticmethod
+    def _build_citations(
+        docs,
+    ) -> list[CitationSource]:
+        """Build citation sources from retrieved documents."""
+
+        citations: list[CitationSource] = []
+
+        for index, doc in enumerate(docs, start=1):
+            metadata = (
+                getattr(
+                    doc,
+                    "metadata",
+                    {},
+                )
+                or {}
+            )
+
+            source = metadata.get("source")
+            chunk_id = metadata.get("chunk_id")
+
+            if not source or not chunk_id:
+                logger.warning(
+                    "Skipping citation for document with missing source or chunk_id"
+                )
+                continue
+
+            page = metadata.get("page")
+
+            if page is not None:
+                try:
+                    page = int(page) + 1
+                except (TypeError, ValueError):
+                    page = None
+
+            citations.append(
+                CitationSource(
+                    citation_id=str(index),
+                    source=str(source),
+                    chunk_id=str(chunk_id),
+                    page=page,
+                )
+            )
+
+        return citations
 
     # =========================================================
     # RETRIEVAL
@@ -133,6 +180,7 @@ class RAGNodes:
             )
             for index, doc in enumerate(docs)
         ]
+        citations = self._build_citations(docs)
 
         log_event(
             logger,
@@ -175,6 +223,7 @@ class RAGNodes:
         return {
             "question": question,
             "retrieved_docs": docs,
+            "citations": citations,
             "retrieval_attempts": retrieval_attempts,
             "retrieval_metadata": {
                 "attempt": retrieval_attempts,

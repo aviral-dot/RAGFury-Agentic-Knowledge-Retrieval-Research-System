@@ -28,6 +28,7 @@ from src.utils.loggers import (
     get_logger,
     log_event,
 )
+from src.vectorstore.documents_ids import build_document_id
 
 configure_logging()
 
@@ -489,10 +490,24 @@ class VectorStore:
                     collection_name=(self.collection_name),
                 )
 
+                ids = []
+
+            for document in documents:
+                source = str(document.metadata["source"])
+                chunk_id = str(document.metadata["chunk_id"])
+
+                document_id = build_document_id(
+                    source=source,
+                    chunk_id=chunk_id,
+                )
+
+                ids.append(document_id)
+
                 self.vectorstore = QdrantVectorStore.from_documents(
                     documents=documents,
                     embedding=self.embedding,
                     sparse_embedding=(self.sparse_embedding),
+                    ids=ids,
                     url=self.qdrant_url,
                     api_key=self.qdrant_api_key,
                     collection_name=(self.collection_name),
@@ -524,22 +539,14 @@ class VectorStore:
 
                 ids = []
 
-                for index, document in enumerate(documents):
-                    source = str(
-                        document.metadata.get(
-                            "source",
-                            "unknown",
-                        )
-                    )
+                for document in documents:
+                    source = str(document.metadata["source"])
+                    chunk_id = str(document.metadata["chunk_id"])
 
-                    chunk_id = str(
-                        document.metadata.get(
-                            "chunk_id",
-                            index,
-                        )
+                    document_id = build_document_id(
+                        source=source,
+                        chunk_id=chunk_id,
                     )
-
-                    document_id = f"{source}:{chunk_id}"
 
                     ids.append(document_id)
 

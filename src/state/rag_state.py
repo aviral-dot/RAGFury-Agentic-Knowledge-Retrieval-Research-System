@@ -3,6 +3,8 @@ from typing import Any, List, TypedDict
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
 
+from src.models.citation import CitationSource
+
 
 class RAGState(TypedDict, total=False):
     request_id: str
@@ -19,6 +21,7 @@ class RAGState(TypedDict, total=False):
     next_step: str
 
     retrieved_docs: List[Document]
+    citations: List[CitationSource]
 
     retrieval_attempts: int
 
