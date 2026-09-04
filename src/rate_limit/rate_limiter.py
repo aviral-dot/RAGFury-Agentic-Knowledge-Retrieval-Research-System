@@ -118,7 +118,7 @@ class GlobalRateLimiter:
             redis.call(
                 "EXPIRE",
                 key,
-                window_seconds + 1
+                window_seconds *2
             )
 
             local new_count = current_count + 1
