@@ -47,13 +47,20 @@ class GenerationNodes:
 
     @staticmethod
     def _build_citation_context(
+        *,
         documents,
+        citations,
     ) -> str:
-        """Build retrieved context with explicit citation identifiers."""
+        """Build retrieved context using canonical citation identifiers."""
+
+        if not documents or not citations:
+            return ""
+
+        citations_by_chunk_id = {citation.chunk_id: citation for citation in citations}
 
         context_parts: list[str] = []
 
-        for index, document in enumerate(documents, start=1):
+        for document in documents:
             metadata = (
                 getattr(
                     document,
@@ -63,30 +70,47 @@ class GenerationNodes:
                 or {}
             )
 
-            source = metadata.get(
-                "source",
-                "Unknown source",
+            chunk_id = metadata.get("chunk_id")
+
+            if not chunk_id:
+                logger.warning(
+                    "Skipping generation context for document with missing chunk_id"
+                )
+                continue
+
+            citation = citations_by_chunk_id.get(str(chunk_id))
+
+            if citation is None:
+                logger.warning(
+                    "Skipping generation context for chunk without citation: %s",
+                    chunk_id,
+                )
+                continue
+
+            content = getattr(
+                document,
+                "page_content",
+                "",
             )
 
-            chunk_id = metadata.get(
-                "chunk_id",
-                "unknown",
+            if not content:
+                continue
+
+            page_text = (
+                f"Page: {citation.page}"
+                if citation.page is not None
+                else "Page: unavailable"
             )
-
-            page = metadata.get("page")
-
-            page_text = f"page={page}" if page is not None else "page=unknown"
 
             context_parts.append(
-                f"[{index}]\n"
-                f"source={source}\n"
+                f"SOURCE [{citation.citation_id}]\n"
+                f"Document: {citation.source}\n"
                 f"{page_text}\n"
-                f"chunk_id={chunk_id}\n"
-                f"content:\n"
-                f"{document.page_content}"
+                f"Chunk ID: {citation.chunk_id}\n\n"
+                f"{content}"
             )
 
-        return "\n\n---\n\n".join(context_parts)
+            return "\n\n---\n\n".join(context_parts)
 
     @traceable(
         name="RAGFury Answer Generation",
