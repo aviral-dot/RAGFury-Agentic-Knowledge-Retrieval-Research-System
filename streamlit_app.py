@@ -187,6 +187,49 @@ def display_route(route: str):
         st.info(f"🤖 **Agent Route:** `{route}`")
 
 
+def display_citations(result):
+    """
+    Display citations returned by the RAG API.
+    """
+
+    citations = result.get(
+        "citations",
+        [],
+    )
+
+    if not citations:
+        return
+
+    st.markdown("### 📚 Sources")
+
+    for citation in citations:
+        citation_id = citation.get(
+            "citation_id",
+            "",
+        )
+
+        source = citation.get(
+            "source",
+            "Unknown source",
+        )
+
+        page = citation.get("page")
+
+        chunk_id = citation.get(
+            "chunk_id",
+            "unknown",
+        )
+
+        if page is not None:
+            page_text = f"Page {page}"
+        else:
+            page_text = "Page unavailable"
+
+        st.markdown(
+            f"**[{citation_id}] {source}**  \n📄 {page_text}  \n`Chunk: {chunk_id}`"
+        )
+
+
 def display_rag_details(result):
     """
     Display RAG-specific information.
@@ -484,6 +527,8 @@ def main():
                 st.markdown("### 💡 Answer")
 
                 st.success(answer)
+
+                display_citations(result)
 
                 # =========================================================
                 # USER FEEDBACK
