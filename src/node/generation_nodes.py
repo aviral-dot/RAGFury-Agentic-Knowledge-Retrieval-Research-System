@@ -45,6 +45,49 @@ class GenerationNodes:
     # ANSWER GENERATION
     # =========================================================
 
+    @staticmethod
+    def _build_citation_context(
+        documents,
+    ) -> str:
+        """Build retrieved context with explicit citation identifiers."""
+
+        context_parts: list[str] = []
+
+        for index, document in enumerate(documents, start=1):
+            metadata = (
+                getattr(
+                    document,
+                    "metadata",
+                    {},
+                )
+                or {}
+            )
+
+            source = metadata.get(
+                "source",
+                "Unknown source",
+            )
+
+            chunk_id = metadata.get(
+                "chunk_id",
+                "unknown",
+            )
+
+            page = metadata.get("page")
+
+            page_text = f"page={page}" if page is not None else "page=unknown"
+
+            context_parts.append(
+                f"[{index}]\n"
+                f"source={source}\n"
+                f"{page_text}\n"
+                f"chunk_id={chunk_id}\n"
+                f"content:\n"
+                f"{document.page_content}"
+            )
+
+        return "\n\n---\n\n".join(context_parts)
+
     @traceable(
         name="RAGFury Answer Generation",
         run_type="chain",
@@ -80,7 +123,7 @@ class GenerationNodes:
         # -----------------------------------------------------
 
         try:
-            context = "\n\n".join(doc.page_content for doc in documents)
+            context = self._build_citation_context(documents)
 
             prompt = f"""
 You are a knowledgeable assistant answering a user's question
