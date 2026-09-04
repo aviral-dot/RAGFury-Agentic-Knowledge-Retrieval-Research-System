@@ -89,7 +89,7 @@ class ChatNode:
 
         try:
             memory_context = await asyncio.to_thread(
-                memory_context=self.memory_manager.get_context,
+                self.memory_manager.get_context,
                 user_id=user_id,
                 conversation_id=conversation_id,
                 query=question,
