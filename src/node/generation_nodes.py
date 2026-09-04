@@ -109,6 +109,11 @@ class GenerationNodes:
             [],
         )
 
+        citations = state.get(
+            "citations",
+            [],
+        )
+
         document_count = len(documents)
 
         log_event(
@@ -123,7 +128,9 @@ class GenerationNodes:
         # -----------------------------------------------------
 
         try:
-            context = self._build_citation_context(documents)
+            context = self._build_citation_context(
+                documents=documents, citations=citations
+            )
 
             prompt = f"""
 You are a knowledgeable assistant answering a user's question
@@ -145,6 +152,19 @@ Instructions:
 5. Do not mention internal tools, agents, retrieval, grading,
    or workflow.
 6. Keep the answer clear, concise, and useful.
+
+Citation rules:
+
+7. Each retrieved document has a citation identifier such as [1], [2], [3].
+8. Use the citation identifier immediately after factual claims
+   supported by that document.
+9. Use only citation identifiers that appear in the retrieved documents.
+10. Never invent citation identifiers.
+11. If multiple retrieved documents support the same claim,
+    cite them together, for example [1][2].
+12. Do not cite a document unless it supports the claim.
+13. If the retrieved documents do not contain enough information
+    to answer the question, do not fabricate an answer or citation.
 """
 
         except Exception as exc:
