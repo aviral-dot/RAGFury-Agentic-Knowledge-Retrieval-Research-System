@@ -15,6 +15,7 @@ from langchain_core.documents import Document
 
 from src.semantic_chunker.semantic_chunker import ThresholdSematicChunker
 from src.utils.loggers import get_logger, log_event
+from src.vectorstore.documents_ids import build_chunk_id
 
 logger = get_logger(__name__)
 
@@ -458,10 +459,13 @@ class DocumentProcessor:
             # -------------------------------------------------
 
             for index, chunk in enumerate(chunks):
-                chunk.metadata["source"] = file_path.name
+                source = file_path.name
 
-                # Make chunk IDs deterministic.
-                chunk.metadata["chunk_id"] = index
+                chunk.metadata["source"] = source
+                chunk.metadata["chunk_id"] = build_chunk_id(
+                    source=source,
+                    chunk_index=index,
+                )
 
             elapsed = (time.perf_counter() - start_time) * 1000
 
