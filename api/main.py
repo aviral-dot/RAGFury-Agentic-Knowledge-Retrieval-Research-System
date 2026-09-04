@@ -16,6 +16,7 @@ from langsmith import Client, trace
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from api.schemas import (
+    CitationResponse,
     FeedbackRequest,
     HealthResponse,
     QueryRequest,
@@ -1055,6 +1056,42 @@ async def query(
 
     documents: List[RetrievedDocument] = []
 
+    # =========================================================
+    # CITATIONS
+    # =========================================================
+
+    raw_citations = result.get(
+        "citations",
+        [],
+    )
+
+    citations: List[CitationResponse] = []
+
+    for citation in raw_citations:
+        if hasattr(
+            citation,
+            "model_dump",
+        ):
+            citation_data = citation.model_dump()
+
+        else:
+            citation_data = citation
+
+        citations.append(
+            CitationResponse(
+                citation_id=str(
+                    citation_data.get("citation_id"),
+                ),
+                source=str(
+                    citation_data.get("source"),
+                ),
+                chunk_id=str(
+                    citation_data.get("chunk_id"),
+                ),
+                page=citation_data.get("page"),
+            )
+        )
+
     for document in raw_documents:
         if hasattr(
             document,
@@ -1113,6 +1150,7 @@ async def query(
         next_step=result.get("next_step"),
         documents=documents,
         request_id=request_id,
+        citations=citations,
         run_id=result.get("run_id"),
         document_relevance=result.get("document_relevance"),
         grade_reason=result.get("grade_reason"),

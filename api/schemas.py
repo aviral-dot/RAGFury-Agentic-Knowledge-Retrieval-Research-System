@@ -43,10 +43,24 @@ class RetrievedDocument(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class CitationResponse(BaseModel):
+    """Serializable citation source returned with an answer."""
+
+    citation_id: str
+
+    source: str
+
+    chunk_id: str
+
+    page: int | None = None
+
+
 class QueryResponse(BaseModel):
     """Response returned by RAGFury."""
 
     question: str
+
+    citations: List[CitationResponse] = Field(default_factory=list)
 
     answer: str
 
