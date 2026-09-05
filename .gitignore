@@ -17,3 +17,5 @@ faiss_index/
 
 .cache/
 chroma_db/
+
+logs/*.jsonl

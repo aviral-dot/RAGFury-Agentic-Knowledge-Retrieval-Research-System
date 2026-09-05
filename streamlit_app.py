@@ -173,7 +173,14 @@ def submit_feedback(
 
         return True
 
-    except requests.RequestException:
+    except requests.RequestException as exc:
+        st.error(f"Feedback request failed: {exc}")
+
+        if getattr(exc, "response", None) is not None:
+            st.error(
+                f"Backend response: {exc.response.status_code} — {exc.response.text}"
+            )
+
         return False
 
 
@@ -451,12 +458,13 @@ def display_history():
                     )
                 )
 
-                display_citations(
-                    item.get(
-                        "citations",
-                        [],
+                if item.get("route") == "rag":
+                    display_citations(
+                        item.get(
+                            "citations",
+                            [],
+                        )
                     )
-                )
 
                 stored_result = item.get("result")
 
