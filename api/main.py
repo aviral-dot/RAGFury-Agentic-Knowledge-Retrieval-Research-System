@@ -1066,162 +1066,172 @@ async def query(
                 )
 
     # ---------------------------------------------------------
-    # 5. EXECUTE RAG ONLY WHEN REQUIRED
+    # 5. EXECUTE RAG + OUTPUT GUARDRAIL + CACHE
     # ---------------------------------------------------------
 
     try:
-        if result is None:
-            result = await rag_service.query(
-                question=question,
-                user_id=user_id,
-                conversation_id=conversation_id,
-                request_id=request_id,
+        # -----------------------------------------------------
+        # EXECUTE RAG ONLY WHEN REQUIRED
+        # -----------------------------------------------------
+
+        try:
+            if result is None:
+                result = await rag_service.query(
+                    question=question,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    request_id=request_id,
+                )
+
+        except MaliciousDocumentError as exc:
+            logger.warning(
+                "Malicious document detected during RAG execution.",
+                extra={
+                    "request_id": request_id,
+                    "error": str(exc),
+                },
             )
 
-    except MaliciousDocumentError as exc:
-        logger.warning(
-            "Malicious document detected during RAG execution.",
-            extra={
-                "request_id": request_id,
-                "error": str(exc),
-            },
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "malicious_document",
+                    "message": str(exc),
+                },
+            ) from exc
+
+        except Exception as exc:
+            logger.exception(
+                "RAG execution failed.",
+                extra={
+                    "request_id": request_id,
+                },
+            )
+
+            raise HTTPException(
+                status_code=500,
+                detail="Internal server error.",
+            ) from exc
+
+        # =====================================================
+        # OUTPUT GUARDRAIL
+        # =====================================================
+
+        answer = result.get(
+            "answer",
+            "",
         )
 
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "malicious_document",
-                "message": str(exc),
-            },
-        ) from exc
+        output_guardrail_start_time = time.perf_counter()
 
-    except Exception as exc:
-        logger.exception(
-            "RAG execution failed.",
-            extra={
-                "request_id": request_id,
-            },
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error.",
-        ) from exc
-
-    # =========================================================
-    # OUTPUT GUARDRAIL
-    # =========================================================
-
-    answer = result.get(
-        "answer",
-        "",
-    )
-
-    output_guardrail_start_time = time.perf_counter()
-
-    log_event(
-        logger,
-        level=logging.INFO,
-        event="security.output.started",
-        request_id=request_id,
-    )
-
-    try:
-        output_allowed = await check_output(answer)
-
-    except Exception as exc:
         log_event(
             logger,
-            level=logging.ERROR,
-            event="security.output.failed",
+            level=logging.INFO,
+            event="security.output.started",
             request_id=request_id,
-            error_type=type(exc).__name__,
         )
 
-        logger.exception(
-            "Output guardrail failed",
-        )
-
-        raise HTTPException(
-            status_code=503,
-            detail=("Output security validation failed."),
-        ) from exc
-
-    output_guardrail_elapsed = (
-        time.perf_counter() - output_guardrail_start_time
-    ) * 1000
-
-    log_event(
-        logger,
-        level=(logging.INFO if output_allowed else logging.WARNING),
-        event=(
-            "security.output.allowed" if output_allowed else "security.output.blocked"
-        ),
-        request_id=request_id,
-        answer_length=len(answer),
-        duration_ms=round(
-            output_guardrail_elapsed,
-            2,
-        ),
-    )
-
-    if not output_allowed:
-        raise HTTPException(
-            status_code=403,
-            detail=("The generated response was blocked by the RAGFury safety policy."),
-        )
-
-    # =========================================================
-    # CACHE GENERATED RESULT
-    # =========================================================
-
-    if should_cache_result:
         try:
-            await query_cache.set(
-                cache_key,
-                result,
+            output_allowed = await check_output(answer)
+
+        except Exception as exc:
+            log_event(
+                logger,
+                level=logging.ERROR,
+                event="security.output.failed",
+                request_id=request_id,
+                error_type=type(exc).__name__,
             )
 
-            logger.info(
-                "Query result cached successfully.",
-                extra={
-                    "request_id": request_id,
-                },
+            logger.exception(
+                "Output guardrail failed",
             )
 
-        except Exception:
-            logger.warning(
-                "Query cache write failed; returning response without cache.",
-                extra={
-                    "request_id": request_id,
-                },
+            raise HTTPException(
+                status_code=503,
+                detail=("Output security validation failed."),
+            ) from exc
+
+        output_guardrail_elapsed = (
+            time.perf_counter() - output_guardrail_start_time
+        ) * 1000
+
+        log_event(
+            logger,
+            level=(logging.INFO if output_allowed else logging.WARNING),
+            event=(
+                "security.output.allowed"
+                if output_allowed
+                else "security.output.blocked"
+            ),
+            request_id=request_id,
+            answer_length=len(answer),
+            duration_ms=round(
+                output_guardrail_elapsed,
+                2,
+            ),
+        )
+
+        if not output_allowed:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "The generated response was blocked by the RAGFury safety policy."
+                ),
             )
 
-    # =========================================================
-    # RELEASE DISTRIBUTED LOCK
-    # =========================================================
+        # =====================================================
+        # CACHE GENERATED RESULT
+        # =====================================================
 
-    if lock_key is not None and lock_token is not None:
-        try:
-            await query_cache.release_lock(
-                lock_key,
-                lock_token,
-            )
+        if should_cache_result:
+            try:
+                await query_cache.set(
+                    cache_key,
+                    result,
+                )
 
-            logger.info(
-                "Query cache lock released.",
-                extra={
-                    "request_id": request_id,
-                },
-            )
+                logger.info(
+                    "Query result cached successfully.",
+                    extra={
+                        "request_id": request_id,
+                    },
+                )
 
-        except Exception:
-            logger.warning(
-                "Query cache lock release failed.",
-                extra={
-                    "request_id": request_id,
-                },
-            )
+            except Exception:
+                logger.warning(
+                    "Query cache write failed; returning response without cache.",
+                    extra={
+                        "request_id": request_id,
+                    },
+                )
+
+    finally:
+        # =====================================================
+        # ALWAYS RELEASE DISTRIBUTED LOCK
+        # =====================================================
+
+        if lock_key is not None and lock_token is not None:
+            try:
+                await query_cache.release_lock(
+                    lock_key,
+                    lock_token,
+                )
+
+                logger.info(
+                    "Query cache lock released.",
+                    extra={
+                        "request_id": request_id,
+                    },
+                )
+
+            except Exception:
+                logger.warning(
+                    "Query cache lock release failed.",
+                    extra={
+                        "request_id": request_id,
+                    },
+                )
 
     # =========================================================
     # RESPONSE TIME
