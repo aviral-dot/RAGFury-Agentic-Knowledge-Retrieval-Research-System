@@ -946,9 +946,6 @@ async def query(
     # =========================================================
     # EXECUTE GRAPH
     # =========================================================
-    # =========================================================
-    # EXECUTE GRAPH
-    # =========================================================
 
     cache_key = query_cache.build_shared_key(
         question=question,
@@ -1195,6 +1192,32 @@ async def query(
         except Exception:
             logger.warning(
                 "Query cache write failed; returning response without cache.",
+                extra={
+                    "request_id": request_id,
+                },
+            )
+
+    # =========================================================
+    # RELEASE DISTRIBUTED LOCK
+    # =========================================================
+
+    if lock_key is not None and lock_token is not None:
+        try:
+            await query_cache.release_lock(
+                lock_key,
+                lock_token,
+            )
+
+            logger.info(
+                "Query cache lock released.",
+                extra={
+                    "request_id": request_id,
+                },
+            )
+
+        except Exception:
+            logger.warning(
+                "Query cache lock release failed.",
                 extra={
                     "request_id": request_id,
                 },
