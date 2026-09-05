@@ -1,4 +1,4 @@
-"""Streamlit frontend for RAGFury."""
+"""Production-style Streamlit frontend for RAGFury."""
 
 import time
 
@@ -8,25 +8,60 @@ import streamlit as st
 API_URL = "http://127.0.0.1:8000"
 
 
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+
 st.set_page_config(
     page_title="RAGFury",
-    page_icon="🔍",
-    layout="centered",
+    page_icon="✦",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
+
+# ============================================================
+# LIGHTWEIGHT STYLING
+# ============================================================
 
 st.markdown(
     """
     <style>
 
-    .stButton > button {
-        width: 100%;
-        font-weight: bold;
+    /* Main content */
+    .block-container {
+        max-width: 1180px;
+        padding-top: 2rem;
+        padding-bottom: 4rem;
     }
 
-    .answer-box {
-        padding: 1rem;
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        border-right: 1px solid rgba(128, 128, 128, 0.18);
+    }
+
+    /* Buttons */
+    .stButton > button {
         border-radius: 10px;
+        font-weight: 600;
+        min-height: 2.5rem;
+    }
+
+    /* Inputs */
+    div[data-testid="stTextInput"] input {
+        border-radius: 10px;
+    }
+
+    /* Chat spacing */
+    div[data-testid="stChatMessage"] {
+        margin-bottom: 0.75rem;
+    }
+
+    /* Metrics */
+    div[data-testid="stMetric"] {
+        border: 1px solid rgba(128, 128, 128, 0.16);
+        border-radius: 12px;
+        padding: 0.75rem;
     }
 
     </style>
@@ -35,21 +70,13 @@ st.markdown(
 )
 
 
+# ============================================================
+# SESSION STATE
+# ============================================================
+
+
 def init_session_state():
-    """
-    Initialize Streamlit session state.
-
-    user_id:
-        Manually entered by the user.
-        This identifies the user for Mem0 long-term memory.
-
-    conversation_id:
-        Generated automatically by FastAPI.
-        This identifies the current Redis conversation.
-
-    history:
-        Stores responses locally for UI display.
-    """
+    """Initialize Streamlit session state."""
 
     if "history" not in st.session_state:
         st.session_state.history = []
@@ -63,10 +90,9 @@ def init_session_state():
 
 def handle_user_id_change():
     """
-    Reset the UI when the user changes.
+    Reset the visible UI when the user changes.
 
-    The previous user's backend memory is NOT deleted.
-    Only the current Streamlit conversation state is reset.
+    Backend Redis/Mem0 memory is NOT deleted.
     """
 
     new_user_id = st.session_state.user_id_input.strip()
@@ -74,35 +100,29 @@ def handle_user_id_change():
     if new_user_id == st.session_state.user_id:
         return
 
-    # Switch active user
     st.session_state.user_id = new_user_id
 
-    # Start a completely fresh UI conversation
+    # Start a fresh UI conversation.
     st.session_state.conversation_id = None
 
-    # Clear previous user's visible conversation history
+    # Remove previous user's visible conversation.
     st.session_state.history = []
 
 
 def start_new_conversation():
-    """
-    Start a new conversation.
-
-    The user ID stays the same.
-
-    The current conversation ID is cleared.
-    FastAPI will generate a new conversation ID
-    when the next question is sent.
-    """
+    """Start a fresh conversation for the current user."""
 
     st.session_state.conversation_id = None
     st.session_state.history = []
 
 
+# ============================================================
+# API
+# ============================================================
+
+
 def check_api_health():
-    """
-    Check whether the FastAPI backend is available.
-    """
+    """Check whether FastAPI is available."""
 
     try:
         response = requests.get(
@@ -117,22 +137,7 @@ def check_api_health():
 
 
 def ask_backend(question: str):
-    """
-    Send the user's question to FastAPI.
-
-    FastAPI expects:
-
-        question
-        user_id
-
-    conversation_id is sent only when an existing
-    conversation already exists.
-
-    For the first message of a new conversation,
-    conversation_id is omitted.
-
-    FastAPI then generates it automatically.
-    """
+    """Send a question to the FastAPI backend."""
 
     payload = {
         "question": question,
@@ -164,10 +169,7 @@ def submit_feedback(
     run_id: str,
     score: float,
 ):
-    """
-    Send user feedback for a specific LangSmith run
-    to the FastAPI backend.
-    """
+    """Send feedback for a LangSmith run."""
 
     try:
         response = requests.post(
@@ -187,48 +189,36 @@ def submit_feedback(
         return False
 
 
+# ============================================================
+# UI HELPERS
+# ============================================================
+
+
 def display_route(route: str):
-    """
-    Display the route selected by the Agent.
-    """
+    """Display the selected agent."""
 
     if route == "rag":
-        st.info(
-            "📄 **Source: Company Documents**\n\n"
-            "The routing agent selected the "
-            "document RAG pipeline."
-        )
+        st.caption("📄 **Document Research Agent**")
 
     elif route == "chat":
-        st.info(
-            "💬 **Source: Chat Agent**\n\n"
-            "The routing agent selected the "
-            "conversational Chat agent."
-        )
+        st.caption("💬 **Conversational Agent**")
 
-    elif route:
-        st.info(f"🤖 **Agent Route:** `{route}`")
+    else:
+        st.caption(f"🤖 **Agent:** {route or 'Unknown'}")
 
 
-def display_citations(result):
-    """
-    Display citations returned by the RAG API.
-    """
-
-    citations = result.get(
-        "citations",
-        [],
-    )
+def display_citations(citations):
+    """Display citations using native Streamlit components."""
 
     if not citations:
         return
 
-    st.markdown("### 📚 Sources")
+    st.markdown("##### 📚 Sources")
 
-    for citation in citations:
+    for index, citation in enumerate(citations, start=1):
         citation_id = citation.get(
             "citation_id",
-            "",
+            f"S{index}",
         )
 
         source = citation.get(
@@ -243,27 +233,25 @@ def display_citations(result):
             "unknown",
         )
 
-        if page is not None:
-            page_text = f"Page {page}"
-        else:
-            page_text = "Page unavailable"
+        with st.container(border=True):
+            st.markdown(f"**[{citation_id}] {source}**")
 
-        st.markdown(
-            f"**[{citation_id}] {source}**  \n📄 {page_text}  \n`Chunk: {chunk_id}`"
-        )
+            metadata = []
+
+            if page is not None:
+                metadata.append(f"📄 Page {page}")
+
+            if chunk_id:
+                metadata.append(f"Chunk `{chunk_id}`")
+
+            if metadata:
+                st.caption(" · ".join(metadata))
 
 
 def display_rag_details(result):
-    """
-    Display RAG-specific information.
+    """Display advanced RAG information."""
 
-    These fields are normally populated only
-    when the Agent selects the RAG workflow.
-    """
-
-    route = result.get("next_step")
-
-    if route != "rag":
+    if result.get("next_step") != "rag":
         return
 
     documents = result.get(
@@ -271,232 +259,476 @@ def display_rag_details(result):
         [],
     )
 
-    document_relevance = result.get("document_relevance")
+    document_relevance = result.get(
+        "document_relevance",
+    )
 
-    grade_reason = result.get("grade_reason")
+    grade_reason = result.get(
+        "grade_reason",
+    )
 
-    retrieval_attempts = result.get("retrieval_attempts")
+    retrieval_attempts = result.get(
+        "retrieval_attempts",
+    )
 
-    if documents:
-        with st.expander(f"📚 Retrieved Documents ({len(documents)})"):
+    if not (
+        documents
+        or document_relevance is not None
+        or grade_reason
+        or retrieval_attempts is not None
+    ):
+        return
+
+    with st.expander(
+        "🔬 Research details",
+        expanded=False,
+    ):
+        if retrieval_attempts is not None:
+            st.metric(
+                "Retrieval attempts",
+                retrieval_attempts,
+            )
+
+        if document_relevance is not None:
+            st.write(
+                "**Document relevance:**",
+                document_relevance,
+            )
+
+        if grade_reason:
+            st.write(
+                "**Grading reason:**",
+                grade_reason,
+            )
+
+        if documents:
+            st.markdown(f"**Retrieved context — {len(documents)} documents**")
+
             for index, document in enumerate(
                 documents,
                 start=1,
             ):
-                st.markdown(f"### Document {index}")
+                with st.container(border=True):
+                    st.markdown(f"**Document {index}**")
 
-                content = document.get(
-                    "content",
-                    "",
-                )
+                    content = document.get(
+                        "content",
+                        "",
+                    )
 
-                metadata = document.get(
-                    "metadata",
-                    {},
-                )
+                    metadata = document.get(
+                        "metadata",
+                        {},
+                    )
 
-                if content:
-                    st.markdown(content)
+                    if content:
+                        st.write(content)
 
-                if metadata:
-                    st.caption(f"Metadata: {metadata}")
-
-                if index < len(documents):
-                    st.divider()
-
-    if document_relevance is not None or grade_reason:
-        with st.expander("🧠 Document Grading"):
-            if document_relevance is not None:
-                st.write(
-                    "Relevant:",
-                    document_relevance,
-                )
-
-            if grade_reason:
-                st.write(
-                    "Reason:",
-                    grade_reason,
-                )
-
-    if retrieval_attempts is not None:
-        st.caption(f"🔄 Retrieval attempts: {retrieval_attempts}")
+                    if metadata:
+                        st.caption(f"Metadata: {metadata}")
 
 
 def display_chat_details(result):
-    """
-    Display information related to the Chat agent.
-    """
+    """Display advanced memory information."""
 
-    route = result.get("next_step")
-
-    if route != "chat":
+    if result.get("next_step") != "chat":
         return
 
     memories = result.get("relevant_memories")
 
-    if memories:
-        with st.expander("🧠 Long-Term Memory Used"):
-            for memory in memories:
-                if isinstance(
-                    memory,
-                    dict,
-                ):
-                    text = memory.get(
-                        "memory",
-                        memory.get(
-                            "text",
-                            "",
-                        ),
-                    )
+    with st.expander(
+        "🧠 Memory details",
+        expanded=False,
+    ):
+        if not memories:
+            st.caption("No relevant long-term memories were used.")
 
-                else:
-                    text = str(memory)
+            return
 
-                if text:
-                    st.markdown(f"- {text}")
+        st.caption("Relevant long-term memories used for this response:")
 
-    else:
-        st.caption("🧠 No relevant long-term memories found.")
-
-
-def display_history():
-    """
-    Display recent conversation turns.
-    """
-
-    if not st.session_state.history:
-        return
-
-    st.markdown("---")
-
-    st.markdown("### 📜 Recent Conversation")
-
-    for item in reversed(st.session_state.history[-5:]):
-        with st.container():
-            st.markdown(f"**Q:** {item['question']}")
-
-            answer_preview = item["answer"]
-
-            if len(answer_preview) > 200:
-                answer_preview = answer_preview[:200] + "..."
-
-            st.markdown(f"**A:** {answer_preview}")
-
-            route = item.get(
-                "route",
-                "unknown",
-            )
-
-            if route == "rag":
-                st.caption("📄 Source: Company Documents")
-
-            elif route == "chat":
-                st.caption("💬 Source: Chat Agent")
+        for memory in memories:
+            if isinstance(memory, dict):
+                text = memory.get(
+                    "memory",
+                    memory.get(
+                        "text",
+                        "",
+                    ),
+                )
 
             else:
-                st.caption(f"🤖 Route: {route}")
+                text = str(memory)
 
-            st.caption(f"⏱️ Response time: {item['time']:.2f}s")
+            if text:
+                st.write(f"• {text}")
 
 
-def main():
-    """
-    Run the Streamlit application.
-    """
+def display_feedback(run_id: str):
+    """Display feedback controls."""
 
-    init_session_state()
+    if not run_id:
+        return
 
-    st.title("🔍 RAGFury")
+    st.caption("Was this response helpful?")
 
-    st.subheader("Agentic Knowledge Retrieval & Conversational AI")
+    col1, col2, _ = st.columns([1, 1, 5])
 
-    st.markdown(
+    with col1:
+        if st.button(
+            "👍 Helpful",
+            key=f"feedback_positive_{run_id}",
+            use_container_width=True,
+        ):
+            if submit_feedback(
+                run_id=run_id,
+                score=1.0,
+            ):
+                st.success("Thanks for the feedback!")
+            else:
+                st.error("Could not submit feedback.")
+
+    with col2:
+        if st.button(
+            "👎 Not helpful",
+            key=f"feedback_negative_{run_id}",
+            use_container_width=True,
+        ):
+            if submit_feedback(
+                run_id=run_id,
+                score=0.0,
+            ):
+                st.success("Thanks for the feedback!")
+            else:
+                st.error("Could not submit feedback.")
+
+
+# ============================================================
+# WELCOME SCREEN
+# ============================================================
+
+
+def display_welcome():
+    """Display the initial workspace."""
+
+    st.title("✦ RAGFury")
+
+    st.subheader("Agentic Knowledge Assistant")
+
+    st.write(
         """
-        Ask questions about your **company documents**
-        or have a **general conversation** with the AI.
-
-        🤖 The routing agent automatically decides whether
-        to use the **RAG pipeline** or the **Chat agent**.
+        Ask questions about your knowledge base or
+        start a natural conversation. RAGFury automatically
+        chooses the appropriate agent.
         """
     )
 
-    if check_api_health():
-        st.success("🟢 RAGFury API is online")
+    st.divider()
 
-    else:
-        st.error("🔴 RAGFury API is offline")
+    col1, col2, col3 = st.columns(3)
 
-        st.info("Start the FastAPI backend with:\n\n`uvicorn api.main:app --reload`")
+    with col1:
+        with st.container(border=True):
+            st.markdown("### 📄")
+            st.markdown("**Document Research**")
+            st.caption(
+                "Hybrid retrieval, reranking and grounded "
+                "answers from your indexed documents."
+            )
 
-        return
+    with col2:
+        with st.container(border=True):
+            st.markdown("### 💬")
+            st.markdown("**Natural Conversation**")
+            st.caption("Conversational reasoning with short-term and long-term memory.")
+
+    with col3:
+        with st.container(border=True):
+            st.markdown("### 🎯")
+            st.markdown("**Grounded Answers**")
+            st.caption(
+                "Inspect citations and retrieval information "
+                "when document knowledge is used."
+            )
+
+    st.divider()
+
+    st.info("👈 Enter your User ID in the sidebar, then ask your first question below.")
+
+
+# ============================================================
+# CHAT HISTORY
+# ============================================================
+
+
+def display_history():
+    """Display the current conversation."""
+
+    for item in st.session_state.history:
+        # ----------------------------------------------------
+        # USER
+        # ----------------------------------------------------
+
+        with st.chat_message(
+            "user",
+        ):
+            st.write(item["question"])
+
+        # ----------------------------------------------------
+        # ASSISTANT
+        # ----------------------------------------------------
+
+        with st.chat_message(
+            "assistant",
+        ):
+            st.write(item["answer"])
+
+            display_route(
+                item.get(
+                    "route",
+                    "unknown",
+                )
+            )
+
+            display_citations(
+                item.get(
+                    "citations",
+                    [],
+                )
+            )
+
+            stored_result = item.get(
+                "result",
+            )
+
+            if stored_result:
+                display_rag_details(stored_result)
+
+                display_chat_details(stored_result)
+
+            backend_time = item.get("response_time")
+
+            if backend_time is not None:
+                st.caption(f"Backend {backend_time:.2f}s · UI {item['time']:.2f}s")
+
+            else:
+                st.caption(f"Response time {item['time']:.2f}s")
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+
+def display_sidebar(api_online: bool):
+    """Render the application sidebar."""
 
     with st.sidebar:
-        st.header("💬 Conversation")
+        st.title("✦ RAGFury")
 
-        st.caption("User ID")
+        st.caption("Agentic Knowledge & Research")
+
+        st.divider()
+
+        st.subheader("Workspace")
 
         st.text_input(
-            "Enter your User ID",
+            "User ID",
             value=st.session_state.user_id,
             placeholder="e.g. user_12345",
-            label_visibility="collapsed",
             key="user_id_input",
             on_change=handle_user_id_change,
         )
 
-        st.caption("Current conversation")
-
-        if st.session_state.conversation_id:
-            st.code(st.session_state.conversation_id)
+        if st.session_state.user_id:
+            st.success("Workspace active")
 
         else:
-            st.info("Will be generated automatically when you send your first message.")
+            st.info("Enter a User ID to begin.")
 
         st.divider()
 
-        st.markdown(
-            """
-            **Memory Architecture**
-
-            🔵 Redis  
-            Short-term conversation memory
-
-            🟣 Mem0  
-            Long-term semantic memory
-
-            **User ID**
-            → identifies your long-term memory
-
-            **Conversation ID**
-            → automatically identifies the current Redis conversation
-            """
-        )
-
-        st.divider()
-
-        if st.button("🆕 New Conversation"):
+        if st.button(
+            "＋ New conversation",
+            use_container_width=True,
+        ):
             start_new_conversation()
-
             st.rerun()
 
+        st.divider()
+
+        st.subheader("Conversation")
+
+        if st.session_state.conversation_id:
+            st.caption("Conversation ID")
+
+            st.code(
+                st.session_state.conversation_id,
+                language=None,
+            )
+
+        else:
+            st.caption(
+                "A conversation ID will be generated when you send your first message."
+            )
+
+        st.divider()
+
+        if api_online:
+            st.success("🟢 API Online")
+
+        else:
+            st.error("🔴 API Offline")
+
+        with st.expander("🧠 Memory architecture"):
+            st.markdown(
+                """
+                **Redis**
+
+                Short-term conversation memory.
+
+                **Mem0**
+
+                Long-term semantic memory.
+
+                **User ID**
+
+                Identifies the long-term memory namespace.
+
+                **Conversation ID**
+
+                Identifies the current conversation.
+                """
+            )
+
+        with st.expander("ℹ️ About RAGFury"):
+            st.markdown(
+                """
+                RAGFury combines:
+
+                - 🤖 Agentic routing
+                - 🔎 Hybrid retrieval
+                - 🧠 Document reranking
+                - 💬 Conversational memory
+                - 📚 Grounded citations
+                - 🛡️ Production guardrails
+                """
+            )
+
+
+# ============================================================
+# MAIN APPLICATION
+# ============================================================
+
+
+def main():
+    """Run the Streamlit application."""
+
+    init_session_state()
+
+    # ========================================================
+    # API HEALTH
+    # ========================================================
+
+    api_online = check_api_health()
+
+    display_sidebar(api_online)
+
+    # ========================================================
+    # MAIN HEADER
+    # ========================================================
+
+    st.title("Agentic Knowledge Assistant")
+
+    st.caption(
+        "Ask about your documents or have a natural conversation. "
+        "RAGFury automatically chooses the right agent."
+    )
+
+    # ========================================================
+    # API STATUS
+    # ========================================================
+
+    status_col1, status_col2, status_col3 = st.columns(3)
+
+    with status_col1:
+        if api_online:
+            st.success("🟢 API Online")
+        else:
+            st.error("🔴 API Offline")
+
+    with status_col2:
+        st.info("✦ Agentic Routing")
+
+    with status_col3:
+        st.info("📚 Grounded Retrieval")
+
+    # ========================================================
+    # API OFFLINE
+    # ========================================================
+
+    if not api_online:
+        st.warning("RAGFury API is currently unavailable.")
+
+        st.code(
+            "uvicorn api.main:app --reload",
+            language="powershell",
+        )
+
+        st.caption("Start the FastAPI backend and refresh this page.")
+
+        return
+
+    # ========================================================
+    # USER VALIDATION
+    # ========================================================
+
     if not st.session_state.user_id:
-        st.warning(
-            "👤 Please enter your User ID in the sidebar before asking a question."
-        )
+        display_welcome()
 
-    st.markdown("---")
+    else:
+        # ====================================================
+        # EXISTING CHAT
+        # ====================================================
 
-    with st.form("search_form"):
+        if st.session_state.history:
+            display_history()
+
+        else:
+            st.markdown("### Start a conversation")
+
+            st.caption(
+                "Ask a question about your documents or start a general conversation."
+            )
+
+    # ========================================================
+    # INPUT
+    # ========================================================
+
+    st.divider()
+
+    with st.form(
+        "search_form",
+        clear_on_submit=True,
+    ):
         question = st.text_input(
-            "Ask RAGFury",
-            placeholder=("e.g. How much sick leave can an employee take?"),
+            "Message",
+            placeholder=("Ask about your documents or start a conversation..."),
+            label_visibility="collapsed",
         )
 
-        submit = st.form_submit_button("🤖 Ask Agent")
+        submit = st.form_submit_button(
+            "✦ Ask RAGFury",
+            use_container_width=True,
+        )
+
+    # ========================================================
+    # QUERY
+    # ========================================================
 
     if submit:
         if not st.session_state.user_id:
-            st.error("❌ Please enter a User ID in the sidebar first.")
+            st.error("Please enter a User ID before asking a question.")
 
             return
 
@@ -509,7 +741,7 @@ def main():
 
         start_time = time.time()
 
-        with st.spinner("🤔 Agent is processing your question..."):
+        with st.spinner("RAGFury is thinking..."):
             try:
                 result = ask_backend(question)
 
@@ -525,10 +757,9 @@ def main():
                     "unknown",
                 )
 
-                conversation_id = result.get("conversation_id")
-
-                if conversation_id:
-                    st.session_state.conversation_id = conversation_id
+                # ------------------------------------------------
+                # SAVE FULL RESULT FOR RERENDERS
+                # ------------------------------------------------
 
                 st.session_state.history.append(
                     {
@@ -537,79 +768,69 @@ def main():
                         "time": elapsed_time,
                         "route": route,
                         "run_id": result.get("run_id"),
+                        "citations": result.get(
+                            "citations",
+                            [],
+                        ),
+                        "documents": result.get(
+                            "documents",
+                            [],
+                        ),
+                        "document_relevance": result.get("document_relevance"),
+                        "grade_reason": result.get("grade_reason"),
+                        "retrieval_attempts": result.get("retrieval_attempts"),
+                        "relevant_memories": result.get("relevant_memories"),
+                        "response_time": result.get("response_time"),
+                        "result": result,
                     }
                 )
 
-                st.markdown("### 💡 Answer")
+                # ------------------------------------------------
+                # CURRENT RESPONSE
+                # ------------------------------------------------
 
-                st.success(answer)
+                with st.chat_message(
+                    "user",
+                ):
+                    st.write(question)
 
-                display_citations(result)
+                with st.chat_message(
+                    "assistant",
+                ):
+                    st.write(answer)
 
-                # =========================================================
-                # USER FEEDBACK
-                # =========================================================
+                    display_route(route)
 
-                run_id = result.get("run_id")
+                    display_citations(
+                        result.get(
+                            "citations",
+                            [],
+                        )
+                    )
 
-                if run_id:
-                    st.markdown("**Was this answer helpful?**")
+                    display_feedback(result.get("run_id"))
 
-                    col1, col2 = st.columns(2)
+                    display_rag_details(result)
 
-                    with col1:
-                        if st.button(
-                            "👍 Helpful",
-                            key=f"feedback_positive_{run_id}",
-                        ):
-                            if submit_feedback(
-                                run_id=run_id,
-                                score=1.0,
-                            ):
-                                st.success("Thanks for your feedback! 👍")
-                            else:
-                                st.error("Could not submit feedback.")
+                    display_chat_details(result)
 
-                    with col2:
-                        if st.button(
-                            "👎 Not helpful",
-                            key=f"feedback_negative_{run_id}",
-                        ):
-                            if submit_feedback(
-                                run_id=run_id,
-                                score=0.0,
-                            ):
-                                st.success("Thanks for your feedback! 👎")
-                            else:
-                                st.error("Could not submit feedback.")
+                    backend_time = result.get("response_time")
 
-                display_route(route)
+                    if backend_time is not None:
+                        st.caption(
+                            f"Backend {backend_time:.2f}s · UI {elapsed_time:.2f}s"
+                        )
 
-                display_rag_details(result)
-
-                display_chat_details(result)
-
-                backend_time = result.get("response_time")
-
-                if backend_time is not None:
-                    st.caption(f"⏱️ Backend response time: {backend_time:.2f}s")
-
-                st.caption(f"⏱️ Total UI response time: {elapsed_time:.2f}s")
-
-                if st.session_state.conversation_id:
-                    st.caption(f"💬 Conversation: {st.session_state.conversation_id}")
+                    else:
+                        st.caption(f"UI response time {elapsed_time:.2f}s")
 
             except requests.exceptions.Timeout:
-                st.error("⏱️ Request timed out. The RAGFury pipeline took too long.")
+                st.error("⏱️ The request timed out. The RAGFury pipeline took too long.")
 
             except requests.exceptions.ConnectionError:
                 st.error("🔴 Could not connect to the FastAPI backend.")
 
             except requests.exceptions.HTTPError as exc:
-                # ------------------------------------------------
-                # Handle FastAPI HTTP errors cleanly
-                # ------------------------------------------------
-
                 try:
                     error_data = exc.response.json()
 
@@ -621,31 +842,17 @@ def main():
                 except Exception:
                     detail = "The request was rejected by the API."
 
-                # ------------------------------------------------
-                # 400 = Safety / validation rejection
-                # ------------------------------------------------
-
                 if exc.response.status_code == 400:
                     st.warning(f"🛡️ {detail}")
 
-                # ------------------------------------------------
-                # 503 = Backend / security service failure
-                # ------------------------------------------------
-
                 elif exc.response.status_code == 503:
                     st.error(f"🚨 {detail}")
-
-                # ------------------------------------------------
-                # Other HTTP errors
-                # ------------------------------------------------
 
                 else:
                     st.error(f"❌ {detail}")
 
             except Exception as exc:
                 st.error(f"❌ Unexpected error: {exc}")
-
-    display_history()
 
 
 if __name__ == "__main__":
