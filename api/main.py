@@ -171,12 +171,6 @@ class RAGService:
             mode="query",
         )
 
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="vectorstore.initialization.started",
-        )
-
         self.vector_store = VectorStore(mode="query")
 
         log_event(
