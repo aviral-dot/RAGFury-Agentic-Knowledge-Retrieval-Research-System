@@ -53,14 +53,14 @@ class Config:
     QUERY_CACHE_LOCK_TTL_SECONDS = int(
         os.getenv(
             "QUERY_CACHE_LOCK_TTL_SECONDS",
-            "60",
+            "180",
         )
     )
 
     QUERY_CACHE_WAIT_TIMEOUT_SECONDS = float(
         os.getenv(
             "QUERY_CACHE_WAIT_TIMEOUT_SECONDS",
-            "30",
+            "130",
         )
     )
 

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -24,6 +25,7 @@ from api.schemas import (
     RetrievedDocument,
     SystemInfoResponse,
 )
+from src.cache.query_cache import QueryCache
 from src.checkpoint.postgres import (
     get_checkpoint_database_url,
 )
@@ -49,6 +51,18 @@ from src.utils.loggers import (
     log_event,
 )
 from src.vectorstore.vectorstore import VectorStore
+
+CACHE_MODEL_VERSION = Config.LLM_MODEL
+
+CACHE_PROMPT_VERSION = os.getenv(
+    "RAG_PROMPT_VERSION",
+    "v1",
+)
+
+CACHE_INDEX_VERSION = os.getenv(
+    "RAG_INDEX_VERSION",
+    "v1",
+)
 
 configure_logging()
 
@@ -426,7 +440,12 @@ global_rate_limiter = GlobalRateLimiter(
     window_seconds=60,
 )
 
-
+query_cache = QueryCache(
+    redis_url=Config.REDIS_URL,
+    ttl_seconds=Config.QUERY_CACHE_TTL_SECONDS,
+    key_prefix=Config.QUERY_CACHE_KEY_PREFIX,
+    lock_ttl_seconds=Config.QUERY_CACHE_LOCK_TTL_SECONDS,
+)
 # =============================================================
 # FASTAPI LIFESPAN
 # =============================================================
@@ -566,6 +585,14 @@ async def lifespan(
         # -----------------------------------------------------
         # Clear application references
         # -----------------------------------------------------
+        try:
+            await query_cache.close()
+
+        except Exception:
+            logger.exception(
+                "Failed to close query cache",
+            )
+
         try:
             await global_rate_limiter.close()
 
@@ -919,6 +946,71 @@ async def query(
     # =========================================================
     # EXECUTE GRAPH
     # =========================================================
+    cache_key = query_cache.build_shared_key(
+        question=question,
+        model_version=CACHE_MODEL_VERSION,
+        prompt_version=CACHE_PROMPT_VERSION,
+        index_version=CACHE_INDEX_VERSION,
+    )
+
+    cache_hit = False
+
+    try:
+        cached_result = await query_cache.get(cache_key)
+    except Exception:
+        cached_result = None
+        logger.warning(
+            "Query cache read failed; continuing without cache.",
+            extra={"request_id": request_id},
+        )
+
+    if cached_result is not None:
+        result = cached_result
+        cache_hit = True
+    else:
+        result = None
+
+    if not cache_hit:
+        lock_key = query_cache.build_lock_key(
+            computation_key=cache_key,
+        )
+        lock_token = await query_cache.acquire_lock(lock_key)
+
+        try:
+            lock_token = await query_cache.acquire_lock(lock_key)
+        except Exception:
+            lock_token = None
+            logger.warning(
+                "Query cache lock acquisition failed; continuing with RAG.",
+                extra={"request_id": request_id},
+            )
+
+        if lock_token is not None:
+            try:
+                result = await rag_service.query(
+                    question=question,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    request_id=request_id,
+                )
+            finally:
+                await query_cache.release_lock(
+                    lock_key,
+                    lock_token,
+                )
+        else:
+            result = await query_cache.wait_for_result(
+                cache_key,
+                timeout_seconds=Config.QUERY_CACHE_WAIT_TIMEOUT_SECONDS,
+            )
+            if result is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "The requested result is currently being generated. "
+                        "Please retry."
+                    ),
+                )
 
     try:
         result = await rag_service.query(
