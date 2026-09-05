@@ -1174,20 +1174,35 @@ async def query(
 
         if should_cache_result:
             try:
+                # -------------------------------------------------
+                # BUILD JSON-SERIALIZABLE CACHE PAYLOAD
+                # -------------------------------------------------
+                cacheable_result = {
+                    "answer": result.get("answer", ""),
+                    "documents": [
+                        {
+                            "page_content": document.page_content,
+                            "metadata": document.metadata,
+                        }
+                        for document in result.get("documents", [])
+                    ],
+                }
+
                 await query_cache.set(
                     cache_key,
-                    result,
+                    cacheable_result,
                 )
 
                 logger.info(
                     "Query result cached successfully.",
                     extra={
                         "request_id": request_id,
+                        "document_count": len(cacheable_result["documents"]),
                     },
                 )
 
             except Exception:
-                logger.warning(
+                logger.exception(
                     "Query cache write failed; returning response without cache.",
                     extra={
                         "request_id": request_id,
