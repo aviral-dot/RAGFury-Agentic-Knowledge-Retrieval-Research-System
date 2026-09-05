@@ -26,6 +26,18 @@ class Config:
         "redis://localhost:6379",
     )
 
+    QUERY_CACHE_TTL_SECONDS = int(
+        os.getenv(
+            "QUERY_CACHE_TTL_SECONDS",
+            "300",
+        )
+    )
+
+    QUERY_CACHE_KEY_PREFIX = os.getenv(
+        "QUERY_CACHE_KEY_PREFIX",
+        "ragfury:query_cache:v1",
+    )
+
     QDRANT_URL = os.getenv(
         "QDRANT_URL",
         "http://localhost:6333",
