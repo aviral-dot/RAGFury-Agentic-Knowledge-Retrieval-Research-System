@@ -14,7 +14,6 @@ from langgraph.checkpoint.postgres.aio import (
     AsyncPostgresSaver,
 )
 from langsmith import Client, trace
-from prometheus_fastapi_instrumentator import Instrumentator
 
 from api.schemas import (
     CitationResponse,
@@ -620,11 +619,6 @@ app = FastAPI(
     description=("Agentic Knowledge Retrieval & Research System"),
     version="1.0.0",
     lifespan=lifespan,
-)
-
-Instrumentator().instrument(app).expose(
-    app,
-    endpoint="/metrics",
 )
 
 
