@@ -61,6 +61,29 @@ def init_session_state():
         st.session_state.conversation_id = None
 
 
+def handle_user_id_change():
+    """
+    Reset the UI when the user changes.
+
+    The previous user's backend memory is NOT deleted.
+    Only the current Streamlit conversation state is reset.
+    """
+
+    new_user_id = st.session_state.user_id_input.strip()
+
+    if new_user_id == st.session_state.user_id:
+        return
+
+    # Switch active user
+    st.session_state.user_id = new_user_id
+
+    # Start a completely fresh UI conversation
+    st.session_state.conversation_id = None
+
+    # Clear previous user's visible conversation history
+    st.session_state.history = []
+
+
 def start_new_conversation():
     """
     Start a new conversation.
@@ -412,21 +435,14 @@ def main():
 
         st.caption("User ID")
 
-        user_id = st.text_input(
+        st.text_input(
             "Enter your User ID",
             value=st.session_state.user_id,
             placeholder="e.g. user_12345",
             label_visibility="collapsed",
+            key="user_id_input",
+            on_change=handle_user_id_change,
         )
-
-        user_id = user_id.strip()
-
-        if user_id != st.session_state.user_id:
-            st.session_state.user_id = user_id
-
-            st.session_state.conversation_id = None
-
-            st.session_state.history = []
 
         st.caption("Current conversation")
 
