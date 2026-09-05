@@ -946,6 +946,10 @@ async def query(
     # =========================================================
     # EXECUTE GRAPH
     # =========================================================
+    # =========================================================
+    # EXECUTE GRAPH
+    # =========================================================
+
     cache_key = query_cache.build_shared_key(
         question=question,
         model_version=CACHE_MODEL_VERSION,
@@ -953,119 +957,158 @@ async def query(
         index_version=CACHE_INDEX_VERSION,
     )
 
+    result = None
     cache_hit = False
+    should_cache_result = False
+
+    lock_key = None
+    lock_token = None
+
+    # ---------------------------------------------------------
+    # 1. CACHE LOOKUP
+    # ---------------------------------------------------------
 
     try:
         cached_result = await query_cache.get(cache_key)
+
     except Exception:
         cached_result = None
+
         logger.warning(
             "Query cache read failed; continuing without cache.",
-            extra={"request_id": request_id},
+            extra={
+                "request_id": request_id,
+            },
         )
 
     if cached_result is not None:
         result = cached_result
         cache_hit = True
-    else:
-        result = None
+
+        logger.info(
+            "Query cache hit.",
+            extra={
+                "request_id": request_id,
+            },
+        )
+
+    # ---------------------------------------------------------
+    # 2. CACHE MISS → DISTRIBUTED LOCK
+    # ---------------------------------------------------------
 
     if not cache_hit:
         lock_key = query_cache.build_lock_key(
             computation_key=cache_key,
         )
-        lock_token = await query_cache.acquire_lock(lock_key)
 
         try:
-            lock_token = await query_cache.acquire_lock(lock_key)
-        except Exception:
-            lock_token = None
-            logger.warning(
-                "Query cache lock acquisition failed; continuing with RAG.",
-                extra={"request_id": request_id},
+            lock_token = await query_cache.acquire_lock(
+                lock_key,
             )
 
-        if lock_token is not None:
-            try:
-                result = await rag_service.query(
-                    question=question,
-                    user_id=user_id,
-                    conversation_id=conversation_id,
-                    request_id=request_id,
-                )
-            finally:
-                await query_cache.release_lock(
-                    lock_key,
-                    lock_token,
-                )
-        else:
-            result = await query_cache.wait_for_result(
-                cache_key,
-                timeout_seconds=Config.QUERY_CACHE_WAIT_TIMEOUT_SECONDS,
+        except Exception:
+            lock_token = None
+
+            logger.warning(
+                "Query cache lock acquisition failed; continuing without cache.",
+                extra={
+                    "request_id": request_id,
+                },
             )
-            if result is None:
+
+        # -----------------------------------------------------
+        # 3. THIS REQUEST WON THE LOCK
+        # -----------------------------------------------------
+
+        if lock_token is not None:
+            should_cache_result = True
+
+            logger.info(
+                "Query cache lock acquired; executing RAG.",
+                extra={
+                    "request_id": request_id,
+                },
+            )
+
+        # -----------------------------------------------------
+        # 4. THIS REQUEST LOST THE LOCK
+        # -----------------------------------------------------
+
+        else:
+            try:
+                result = await query_cache.wait_for_result(
+                    cache_key,
+                    timeout_seconds=(Config.QUERY_CACHE_WAIT_TIMEOUT_SECONDS),
+                )
+
+            except Exception:
+                result = None
+
+                logger.warning(
+                    "Query cache wait failed; continuing with RAG.",
+                    extra={
+                        "request_id": request_id,
+                    },
+                )
+
+            if result is not None:
+                logger.info(
+                    "Query cache result received after waiting.",
+                    extra={
+                        "request_id": request_id,
+                    },
+                )
+
+            else:
                 raise HTTPException(
                     status_code=503,
                     detail=(
-                        "The requested result is currently being generated. "
-                        "Please retry."
+                        "The requested result is currently "
+                        "being generated. Please retry."
                     ),
                 )
 
+    # ---------------------------------------------------------
+    # 5. EXECUTE RAG ONLY WHEN REQUIRED
+    # ---------------------------------------------------------
+
     try:
-        result = await rag_service.query(
-            question=question,
-            user_id=user_id,
-            conversation_id=conversation_id,
-            request_id=request_id,
-        )
+        if result is None:
+            result = await rag_service.query(
+                question=question,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                request_id=request_id,
+            )
 
     except MaliciousDocumentError as exc:
-        log_event(
-            logger,
-            level=logging.WARNING,
-            event="security.document.blocked",
-            request_id=request_id,
-            error_type=type(exc).__name__,
+        logger.warning(
+            "Malicious document detected during RAG execution.",
+            extra={
+                "request_id": request_id,
+                "error": str(exc),
+            },
         )
 
         raise HTTPException(
             status_code=400,
             detail={
-                "code": "MALICIOUS_DOCUMENT",
-                "message": ("The document failed security validation."),
-                "request_id": request_id,
+                "error": "malicious_document",
+                "message": str(exc),
             },
         ) from exc
 
     except Exception as exc:
-        elapsed = (time.perf_counter() - request_start_time) * 1000
-
-        log_event(
-            logger,
-            level=logging.ERROR,
-            event="query.failed",
-            request_id=request_id,
-            user_id=user_id,
-            conversation_id=conversation_id,
-            duration_ms=round(
-                elapsed,
-                2,
-            ),
-            error_type=type(exc).__name__,
-        )
-
         logger.exception(
-            "Query processing failed",
+            "RAG execution failed.",
+            extra={
+                "request_id": request_id,
+            },
         )
 
         raise HTTPException(
             status_code=500,
-            detail={
-                "code": "INTERNAL_ERROR",
-                "message": "An internal error occurred.",
-                "request_id": request_id,
-            },
+            detail="Internal server error.",
         ) from exc
 
     # =========================================================
@@ -1130,6 +1173,32 @@ async def query(
             status_code=403,
             detail=("The generated response was blocked by the RAGFury safety policy."),
         )
+
+    # =========================================================
+    # CACHE GENERATED RESULT
+    # =========================================================
+
+    if should_cache_result:
+        try:
+            await query_cache.set(
+                cache_key,
+                result,
+            )
+
+            logger.info(
+                "Query result cached successfully.",
+                extra={
+                    "request_id": request_id,
+                },
+            )
+
+        except Exception:
+            logger.warning(
+                "Query cache write failed; returning response without cache.",
+                extra={
+                    "request_id": request_id,
+                },
+            )
 
     # =========================================================
     # RESPONSE TIME
