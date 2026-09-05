@@ -110,7 +110,7 @@ class QueryCache:
 
         return bool(await self.redis.delete(key))
 
-    async def clear(self) -> None:
+    async def close(self) -> None:
         """Close the Redis connection pool used by this cache."""
 
         await self.redis.aclose()
