@@ -17,7 +17,6 @@ from tests.evals.metrics.production_retrieval_metrics import (
     recall_at_k,
 )
 
-
 RETRIEVAL_K = int(os.getenv("EVAL_RETRIEVAL_K", "2"))
 
 
@@ -35,9 +34,8 @@ async def test_production_retrieval_metrics(rag_nodes):
     per_query_results: list[dict[str, float]] = []
 
     for golden in production_retrieval_goldens:
-        result = await rag_nodes.retrieve_docs(
-            {"question": golden.input}
-        )
+        result = await rag_nodes.retrieve_docs({"question": golden.input})
+
         documents = result["retrieved_docs"]
 
         recall = recall_at_k(
@@ -46,12 +44,14 @@ async def test_production_retrieval_metrics(rag_nodes):
             expected_pages=golden.expected_pages,
             k=RETRIEVAL_K,
         )
+
         precision = precision_at_k(
             documents=documents,
             expected_source=golden.expected_source,
             expected_pages=golden.expected_pages,
             k=RETRIEVAL_K,
         )
+
         hit_rate = hit_rate_at_k(
             documents=documents,
             expected_source=golden.expected_source,

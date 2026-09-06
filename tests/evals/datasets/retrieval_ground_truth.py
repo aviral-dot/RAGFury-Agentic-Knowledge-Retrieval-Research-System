@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 EXPECTED_SOURCE = "Comp_Emp_Hand.pdf"
 
 
@@ -82,6 +81,7 @@ if len(production_retrieval_goldens) != 10:
 for golden in production_retrieval_goldens:
     if not golden.input.strip():
         raise RuntimeError("Production retrieval golden input cannot be empty.")
+
     if not golden.expected_pages:
         raise RuntimeError(
             f"Production retrieval golden has no expected pages: {golden.input!r}"
