@@ -8,20 +8,40 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class EvaluationThresholds:
-    """Minimum acceptable evaluation quality."""
+    """Minimum acceptable evaluation quality.
 
-    # Retrieval
+    These values act as regression gates. If an evaluation score falls
+    below its configured threshold, the evaluation must fail.
+    """
+
+    # ------------------------------------------------------------------
+    # Deterministic retrieval
+    # ------------------------------------------------------------------
+    retrieval_recall_at_k: float = 0.70
+    retrieval_precision_at_k: float = 0.50
+    retrieval_hit_rate_at_k: float = 0.90
+
+    # ------------------------------------------------------------------
+    # LLM-based retrieval
+    # ------------------------------------------------------------------
     retrieval_context_relevancy: float = 0.70
 
+    # ------------------------------------------------------------------
     # Grading
+    # ------------------------------------------------------------------
+    grading_classification: float = 1.00
     grading_reason_correctness: float = 0.70
 
+    # ------------------------------------------------------------------
     # Generation
+    # ------------------------------------------------------------------
     generation_faithfulness: float = 0.90
     generation_answer_relevancy: float = 0.85
     generation_answer_correctness: float = 0.85
 
+    # ------------------------------------------------------------------
     # Rewrite
+    # ------------------------------------------------------------------
     rewrite_quality: float = 0.85
 
 

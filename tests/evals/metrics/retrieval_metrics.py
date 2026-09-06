@@ -1,4 +1,4 @@
-"""Metrics for deterministic RAG retrieval evaluation."""
+"""Metrics for RAG retrieval evaluation."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from typing import Any
 
 from deepeval.metrics import ContextualRelevancyMetric
 
+from tests.evals.config import THRESHOLDS
 from tests.evals.helpers.eval_models import create_eval_model
-
 
 eval_model = create_eval_model()
 
@@ -17,7 +17,9 @@ def _source(document: Any) -> str | None:
     """Extract the canonical source identifier from a LangChain Document."""
 
     metadata = getattr(document, "metadata", None) or {}
+
     value = metadata.get("source")
+
     return str(value) if value else None
 
 
@@ -26,21 +28,17 @@ def recall_at_k(
     expected_sources: set[str],
     k: int,
 ) -> float:
-    """Calculate source-level Recall@K.
-
-    Recall@K is the fraction of expected source identifiers represented in
-    the first K retrieved documents. It is deterministic and does not use an
-    LLM judge.
-    """
+    """Calculate source-level Recall@K."""
 
     if not expected_sources:
         raise ValueError("expected_sources must not be empty")
+
     if k <= 0:
         raise ValueError("k must be greater than zero")
 
     retrieved_sources = {
         source
-        for source in (_source(doc) for doc in list(retrieved_documents)[:k])
+        for source in (_source(document) for document in list(retrieved_documents)[:k])
         if source is not None
     }
 
@@ -56,18 +54,16 @@ def precision_at_k(
 
     if not expected_sources:
         raise ValueError("expected_sources must not be empty")
+
     if k <= 0:
         raise ValueError("k must be greater than zero")
 
     top_k = list(retrieved_documents)[:k]
+
     if not top_k:
         return 0.0
 
-    relevant = sum(
-        1
-        for document in top_k
-        if _source(document) in expected_sources
-    )
+    relevant = sum(1 for document in top_k if _source(document) in expected_sources)
 
     return relevant / len(top_k)
 
@@ -77,13 +73,24 @@ def hit_rate_at_k(
     expected_sources: set[str],
     k: int,
 ) -> float:
-    """Calculate source-level Hit Rate@K for a single query."""
+    """Calculate source-level Hit Rate@K."""
 
-    return 1.0 if recall_at_k(retrieved_documents, expected_sources, k) > 0 else 0.0
+    return (
+        1.0
+        if recall_at_k(
+            retrieved_documents,
+            expected_sources,
+            k,
+        )
+        > 0
+        else 0.0
+    )
 
 
-def aggregate_retrieval_metrics(results: list[dict[str, float]]) -> dict[str, float]:
-    """Average per-query retrieval metrics into dataset-level scores."""
+def aggregate_retrieval_metrics(
+    results: list[dict[str, float]],
+) -> dict[str, float]:
+    """Average per-query deterministic retrieval metrics."""
 
     if not results:
         raise ValueError("results must not be empty")
@@ -99,11 +106,11 @@ def aggregate_retrieval_metrics(results: list[dict[str, float]]) -> dict[str, fl
 
 
 def get_retrieval_metrics():
-    """Return optional LLM-judged retrieval metrics."""
+    """Return LLM-judged retrieval metrics."""
 
     return [
         ContextualRelevancyMetric(
-            threshold=0.2,
+            threshold=THRESHOLDS.retrieval_context_relevancy,
             model=eval_model,
             include_reason=True,
         ),

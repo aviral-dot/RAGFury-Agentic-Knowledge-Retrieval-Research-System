@@ -7,6 +7,7 @@ from deepeval import assert_test
 from deepeval.dataset import Golden
 from deepeval.tracing import observe
 
+from tests.evals.config import THRESHOLDS
 from tests.evals.datasets.retrieval_goldens import (
     rag_retrieval_goldens,
 )
@@ -18,6 +19,10 @@ from tests.evals.helpers.rag_eval_helpers import (
     documents_to_context,
     update_retrieval_span,
 )
+from tests.evals.helpers.regression_gate import (
+    assert_thresholds,
+    print_regression_results,
+)
 from tests.evals.metrics.retrieval_metrics import (
     aggregate_retrieval_metrics,
     get_retrieval_metrics,
@@ -26,8 +31,12 @@ from tests.evals.metrics.retrieval_metrics import (
     recall_at_k,
 )
 
-
-RETRIEVAL_K = int(os.getenv("EVAL_RETRIEVAL_K", "2"))
+RETRIEVAL_K = int(
+    os.getenv(
+        "EVAL_RETRIEVAL_K",
+        "2",
+    )
+)
 
 
 class RetrieverComponent:
@@ -36,16 +45,26 @@ class RetrieverComponent:
     def __init__(self, rag_nodes):
         self.rag_nodes = rag_nodes
 
-    @observe(metrics=get_retrieval_metrics())
-    async def retrieve(self, query: str) -> list[str]:
+    @observe(
+        metrics=get_retrieval_metrics(),
+    )
+    async def retrieve(
+        self,
+        query: str,
+    ) -> list[str]:
         """Execute the real RAG retrieval node."""
 
         state = {
             "question": query,
         }
 
-        result = await self.rag_nodes.retrieve_docs(state)
-        retrieved_context = documents_to_context(result["retrieved_docs"])
+        result = await self.rag_nodes.retrieve_docs(
+            state,
+        )
+
+        retrieved_context = documents_to_context(
+            result["retrieved_docs"],
+        )
 
         update_retrieval_span(
             query=query,
@@ -60,12 +79,15 @@ def retriever_component():
     """Create the real RAG retriever once."""
 
     rag_nodes = build_rag_nodes()
-    return RetrieverComponent(rag_nodes=rag_nodes)
+
+    return RetrieverComponent(
+        rag_nodes=rag_nodes,
+    )
 
 
 @pytest.fixture(scope="module")
 def rag_nodes():
-    """Create the real RAG nodes for deterministic retrieval evaluation."""
+    """Create real RAG nodes for deterministic retrieval evaluation."""
 
     return build_rag_nodes()
 
@@ -79,9 +101,17 @@ async def test_retriever_component(
     golden: Golden,
     retriever_component: RetrieverComponent,
 ):
-    """Run each golden through the real retriever and DeepEval judge."""
+    """
+    Run each retrieval golden through the real retriever
+    and LLM-based DeepEval judge.
 
-    await retriever_component.retrieve(golden.input)
+    The Contextual Relevancy regression threshold is defined centrally
+    in tests/evals/config.py.
+    """
+
+    await retriever_component.retrieve(
+        golden.input,
+    )
 
     assert_test(
         golden=golden,
@@ -89,21 +119,36 @@ async def test_retriever_component(
 
 
 @pytest.mark.asyncio
-async def test_deterministic_retrieval_metrics(rag_nodes):
-    """Evaluate Recall@K, Precision@K, and Hit Rate@K deterministically.
+async def test_deterministic_retrieval_metrics(
+    rag_nodes,
+):
+    """
+    Evaluate deterministic retrieval quality.
 
-    Ground truth is based on the canonical source metadata written during
-    ingestion. No LLM judge is involved in these three metrics.
+    This test uses retrieval_ground_truth.py and does NOT use an LLM judge.
+
+    Metrics:
+        - Recall@K
+        - Precision@K
+        - Hit Rate@K
     """
 
     per_query_results: list[dict[str, float]] = []
 
+    executed_queries = 0
+
     for golden in rag_retrieval_goldens:
         result = await rag_nodes.retrieve_docs(
-            {"question": golden.input}
+            {
+                "question": golden.input,
+            }
         )
+
         documents = result["retrieved_docs"]
-        expected_sources = expected_sources_for_query(golden.input)
+
+        expected_sources = expected_sources_for_query(
+            golden.input,
+        )
 
         per_query_results.append(
             {
@@ -125,17 +170,35 @@ async def test_deterministic_retrieval_metrics(rag_nodes):
             }
         )
 
-    aggregate = aggregate_retrieval_metrics(per_query_results)
+        executed_queries += 1
 
-    # Keep the scores visible in CI output without introducing an LLM judge.
+    if executed_queries == 0:
+        raise AssertionError(
+            "Deterministic retrieval evaluation executed zero queries."
+        )
+
+    aggregate = aggregate_retrieval_metrics(
+        per_query_results,
+    )
+
     print(
         "\nDeterministic retrieval metrics "
-        f"(K={RETRIEVAL_K}): "
+        f"(K={RETRIEVAL_K}, "
+        f"Queries={executed_queries}): "
         f"Recall@K={aggregate['recall_at_k']:.4f}, "
         f"Precision@K={aggregate['precision_at_k']:.4f}, "
         f"HitRate@K={aggregate['hit_rate_at_k']:.4f}"
     )
 
-    assert 0.0 <= aggregate["recall_at_k"] <= 1.0
-    assert 0.0 <= aggregate["precision_at_k"] <= 1.0
-    assert 0.0 <= aggregate["hit_rate_at_k"] <= 1.0
+    regression_results = assert_thresholds(
+        metrics=aggregate,
+        thresholds={
+            "recall_at_k": (THRESHOLDS.retrieval_recall_at_k),
+            "precision_at_k": (THRESHOLDS.retrieval_precision_at_k),
+            "hit_rate_at_k": (THRESHOLDS.retrieval_hit_rate_at_k),
+        },
+    )
+
+    print_regression_results(
+        regression_results,
+    )
