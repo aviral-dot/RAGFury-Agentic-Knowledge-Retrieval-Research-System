@@ -19,7 +19,7 @@ class GroqEvalModel(DeepEvalBaseLLM):
             ),
             api_key=os.getenv("GROQ_API_KEY"),
             base_url="https://api.groq.com/openai/v1",
-            max_tokens=1024,
+            max_tokens=512,
             temperature=0,
             timeout=60,
             max_retries=0,
