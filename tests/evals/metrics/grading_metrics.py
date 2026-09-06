@@ -3,27 +3,18 @@
 from deepeval.metrics import BaseMetric, GEval
 from deepeval.test_case import LLMTestCase, SingleTurnParams
 
+from tests.evals.config import THRESHOLDS
 from tests.evals.helpers.eval_models import create_eval_model
 
 eval_model = create_eval_model()
 
 
 class GraderClassificationMetric(BaseMetric):
-    """
-    Deterministically evaluate the grader's True/False decision.
-
-    Expected output:
-        relevant=true
-        reason=...
-
-    Actual output:
-        relevant=true
-        reason=...
-    """
+    """Deterministically evaluate the grader's relevance decision."""
 
     def __init__(
         self,
-        threshold: float = 1.0,
+        threshold: float = THRESHOLDS.grading_classification,
     ):
         self.threshold = threshold
         self.score = 0.0
@@ -129,18 +120,10 @@ class GraderClassificationMetric(BaseMetric):
 
 
 def get_grading_metrics():
-    """
-    Return metrics used to evaluate the document grader.
-
-    1. GraderClassification:
-       Exact True/False correctness.
-
-    2. GraderReasonCorrectness:
-       LLM-based evaluation of the explanation.
-    """
+    """Return metrics used to evaluate the document grader."""
 
     classification_metric = GraderClassificationMetric(
-        threshold=1.0,
+        threshold=THRESHOLDS.grading_classification,
     )
 
     reason_metric = GEval(
@@ -165,7 +148,7 @@ def get_grading_metrics():
             SingleTurnParams.ACTUAL_OUTPUT,
             SingleTurnParams.EXPECTED_OUTPUT,
         ],
-        threshold=0.7,
+        threshold=THRESHOLDS.grading_reason_correctness,
         model=eval_model,
     )
 

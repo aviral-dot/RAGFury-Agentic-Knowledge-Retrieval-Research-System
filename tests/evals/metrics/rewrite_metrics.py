@@ -1,10 +1,9 @@
 """DeepEval metrics for RAG query-rewrite evaluation."""
 
 from deepeval.metrics import GEval
-from deepeval.test_case import (
-    SingleTurnParams,
-)
+from deepeval.test_case import SingleTurnParams
 
+from tests.evals.config import THRESHOLDS
 from tests.evals.helpers.eval_models import create_eval_model
 
 eval_model = create_eval_model()
@@ -13,9 +12,6 @@ eval_model = create_eval_model()
 def get_rewrite_metrics():
     """
     Return metrics used to evaluate the RAG query-rewrite component.
-
-    The metric evaluates whether the rewritten query improves the
-    original search query while preserving the user's information need.
     """
 
     rewrite_quality = GEval(
@@ -39,7 +35,7 @@ def get_rewrite_metrics():
             SingleTurnParams.ACTUAL_OUTPUT,
             SingleTurnParams.EXPECTED_OUTPUT,
         ],
-        threshold=0.7,
+        threshold=THRESHOLDS.rewrite_quality,
         model=eval_model,
     )
 
