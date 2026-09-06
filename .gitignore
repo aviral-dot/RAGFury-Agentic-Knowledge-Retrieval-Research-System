@@ -4,18 +4,38 @@ __pycache__/
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
 
 # Virtual environments
 .venv/
+.venv_old/
+venv/
 
 # Environment variables
 .env
+.env.*
+!.env.example
 
-# Local vector stores
-faiss_index/
-
+# Runtime / local application state
+.langgraph_api/
+.deepeval/
+.deepeval-cache/
+.pytest_cache/
+.ruff_cache/
 .cache/
-chroma_db/
 
-logs/*.jsonl
+# Local vector stores / indexes
+faiss_index/
+chroma_db/
+storage/
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
