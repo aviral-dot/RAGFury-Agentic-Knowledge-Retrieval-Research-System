@@ -24,6 +24,7 @@ from pydantic import ConfigDict
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder
 
+from src.config.config import Config
 from src.utils.loggers import (
     configure_logging,
     get_logger,
@@ -164,7 +165,7 @@ class VectorStore:
             "http://localhost:6333",
         )
 
-        self.qdrant_api_key = qdrant_api_key or os.getenv("QDRANT_API_KEY")
+        self.qdrant_api_key = qdrant_api_key or Config.QDRANT_API_KEY
 
         self.collection_name = collection_name
 

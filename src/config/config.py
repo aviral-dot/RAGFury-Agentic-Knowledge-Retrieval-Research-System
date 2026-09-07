@@ -36,7 +36,6 @@ class Config:
 
     REDIS_URL = os.getenv(
         "REDIS_URL",
-        "redis://localhost:6379",
     )
 
     # ------------------------------------------------------------------
@@ -82,6 +81,8 @@ class Config:
         "QDRANT_COLLECTION",
         "ragfury_documents",
     )
+
+    QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 
     # ------------------------------------------------------------------
     # Default URLs

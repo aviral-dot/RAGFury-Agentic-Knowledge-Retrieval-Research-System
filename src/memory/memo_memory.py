@@ -49,6 +49,7 @@ class Mem0Memory:
                 "provider": "qdrant",
                 "config": {
                     "collection_name": ("ragfury_memories"),
+                    "api_key": os.getenv("QDRANT_API_KEY"),
                     "url": Config.QDRANT_URL,
                     "embedding_model_dims": 768,
                 },

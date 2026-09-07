@@ -546,6 +546,8 @@ async def lifespan(
                     "RAGFury initialization failed",
                 )
 
+                raise
+
             # -------------------------------------------------
             # Application runs while checkpointer context
             # remains open.
