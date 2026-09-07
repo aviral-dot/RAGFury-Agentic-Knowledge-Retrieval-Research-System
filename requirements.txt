@@ -1,36 +1,37 @@
-langchain
-langchain-community
-langgraph
-pydantic
-python-dotenv
+fastapi>=0.141.1
+uvicorn[standard]>=0.52.3
 
+pydantic>=2.11.7
+python-dotenv>=1.1.1
+requests>=2.32.4
+jsonpatch==1.33
+
+langchain>=0.3.27
+langchain-core>=0.3.72
+langchain-community>=0.3.27
 langchain-groq
 langchain-huggingface
-langchain-chroma
+langchain-qdrant>=1.1.0
+langgraph>=0.6.5
+langgraph-checkpoint-postgres
+psycopg[binary,pool]
 
+langsmith
+
+qdrant-client[fastembed]>=1.19.0
 sentence-transformers
-scikit-learn
-chromadb
-rank-bm25
+numpy
+nltk
 
-pypdf
-beautifulsoup4
-requests
+pypdf>=6.0.0
+beautifulsoup4>=4.13.4
 
-fastapi
-uvicorn[standard]
+redis>=8.1.0
+rq>=2.11.0
 
-streamlit
+mem0ai>=2.0.18
+google-genai>=2.18.1
 
-redis
-rq
+nemoguardrails>=0.24.0
 
-mem0ai
-qdrant-client
-google-genai
-
-jsonpatch
-
-
-"langgraph-checkpoint-postgres",
-"psycopg[binary,pool]",
+streamlit>=1.48.1
