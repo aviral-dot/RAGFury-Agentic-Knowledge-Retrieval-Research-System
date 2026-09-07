@@ -5,7 +5,6 @@ from src.config.config import Config
 
 redis_connection = Redis.from_url(
     Config.REDIS_URL,
-    decode_responses=True,
 )
 
 memory_queue = Queue(
