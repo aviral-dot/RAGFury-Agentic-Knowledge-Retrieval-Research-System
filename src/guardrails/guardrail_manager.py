@@ -18,7 +18,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 
 if not NVIDIA_API_KEY:
-    raise RuntimeError("NVIDIA_API_KEY is missing from .env")
+    raise RuntimeError("NVIDIA_API_KEY environment variable is missing")
 
 
 # ============================================================
@@ -27,9 +27,17 @@ if not NVIDIA_API_KEY:
 
 GUARDRAIL_DIR = Path(__file__).resolve().parent
 
-config = RailsConfig.from_path(str(GUARDRAIL_DIR))
+_rails = None
 
-rails = LLMRails(config)
+
+def get_rails():
+    global _rails
+
+    if _rails is None:
+        config = RailsConfig.from_path(str(GUARDRAIL_DIR))
+        _rails = LLMRails(config)
+
+    return _rails
 
 
 # ============================================================
@@ -60,7 +68,7 @@ async def check_input(
         print("INPUT GUARDRAIL")
         print("=" * 70)
 
-        result = await rails.check_async(
+        result = await get_rails().check_async(
             messages=[
                 {
                     "role": "user",
@@ -194,7 +202,7 @@ DOCUMENT {index}
         # the security classifier as untrusted content.
         # ----------------------------------------------------
 
-        result = await rails.check_async(
+        result = await get_rails().check_async(
             messages=[
                 {
                     "role": "user",
@@ -332,7 +340,7 @@ async def check_output(
         print("OUTPUT GUARDRAIL")
         print("=" * 70)
 
-        result = await rails.check_async(
+        result = await get_rails().check_async(
             messages=[
                 {
                     "role": "assistant",
