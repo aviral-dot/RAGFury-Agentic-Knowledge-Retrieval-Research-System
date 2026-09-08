@@ -68,23 +68,23 @@ class Mem0Memory:
             # Vercel's default HOME is read-only, so force Mem0 to use
             # the writable /tmp filesystem before importing Mem0.
 
-            mem0_dir = os.getenv("MEM0_DIR")
+            # mem0_dir = os.getenv("MEM0_DIR")
 
-            if not mem0_dir:
-                if os.getenv("VERCEL"):
-                    mem0_dir = "/tmp/mem0"
-                else:
-                    mem0_dir = os.path.join(
-                        os.path.expanduser("~"),
-                        ".mem0",
-                    )
+            # if not mem0_dir:
+            #     if os.getenv("VERCEL"):
+            #         mem0_dir = "/tmp/mem0"
+            #     else:
+            #         mem0_dir = os.path.join(
+            #             os.path.expanduser("~"),
+            #             ".mem0",
+            #         )
 
-            os.environ["MEM0_DIR"] = mem0_dir
+            # os.environ["MEM0_DIR"] = mem0_dir
 
-            os.makedirs(
-                mem0_dir,
-                exist_ok=True,
-            )
+            # os.makedirs(
+            #     mem0_dir,
+            #     exist_ok=True,
+            # )
 
             from mem0 import Memory
 
