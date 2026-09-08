@@ -69,13 +69,17 @@ class Mem0Memory:
             # the writable /tmp filesystem before importing Mem0.
             if os.getenv("VERCEL"):
                 os.environ["HOME"] = "/tmp"
-                os.environ["MEM0_DIR"] = "/tmp/mem0"
-                os.makedirs("/tmp/mem0", exist_ok=True)
 
-            mem0_dir = os.getenv(
-                "MEM0_DIR",
-                "/tmp/mem0",
-            )
+            mem0_dir = os.getenv("MEM0_DIR")
+
+            if not mem0_dir:
+                if os.getenv("VERCEL"):
+                    mem0_dir = "/tmp/mem0"
+                else:
+                    mem0_dir = os.path.join(
+                        os.path.expanduser("~"),
+                        ".mem0",
+                    )
 
             os.environ["MEM0_DIR"] = mem0_dir
 
