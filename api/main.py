@@ -574,7 +574,7 @@ async def lifespan(
         # uninitialized if its infrastructure failed.
         # -----------------------------------------------------
 
-        raise
+        yield
 
     finally:
         # -----------------------------------------------------
