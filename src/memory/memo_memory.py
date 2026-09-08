@@ -67,8 +67,6 @@ class Mem0Memory:
             # Mem0 performs filesystem initialization during import.
             # Vercel's default HOME is read-only, so force Mem0 to use
             # the writable /tmp filesystem before importing Mem0.
-            if os.getenv("VERCEL"):
-                os.environ["HOME"] = "/tmp"
 
             mem0_dir = os.getenv("MEM0_DIR")
 
