@@ -51,7 +51,9 @@ class JsonFormatter(logging.Formatter):
             log_entry["exception"] = {
                 "type": (exc_type.__name__ if exc_type is not None else "UnknownError"),
                 "message": str(exc_value),
-                "traceback": self.formatException(record.exc_info),
+                "traceback": self.formatException(
+                    record.exc_info,
+                ),
             }
 
         return json.dumps(
@@ -63,11 +65,6 @@ class JsonFormatter(logging.Formatter):
 
 def configure_logging() -> None:
     """Configure application-wide structured logging."""
-
-    LOG_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
 
     root_logger = logging.getLogger()
 
@@ -89,7 +86,51 @@ def configure_logging() -> None:
 
     formatter = JsonFormatter()
 
-    if "ragfury_file" not in existing_handler_names:
+    # Always use stdout for serverless/runtime environments.
+    #
+    # Vercel's deployment filesystem is read-only, so application
+    # logs must not be written under the deployed project directory.
+    if "ragfury_console" not in existing_handler_names:
+        console_handler = logging.StreamHandler(
+            sys.stdout,
+        )
+
+        console_handler.name = "ragfury_console"
+        console_handler.setLevel(log_level)
+        console_handler.setFormatter(formatter)
+
+        root_logger.addHandler(console_handler)
+
+    # Persist JSON logs only when explicitly enabled.
+    #
+    # This keeps local development behavior while preventing
+    # filesystem writes on Vercel/serverless deployments.
+    enable_file_logging = (
+        os.getenv(
+            "RAGFURY_FILE_LOGGING",
+            "true",
+        ).lower()
+        == "true"
+    )
+
+    is_vercel = (
+        os.getenv(
+            "VERCEL",
+            "",
+        ).lower()
+        == "1"
+    )
+
+    if (
+        enable_file_logging
+        and not is_vercel
+        and "ragfury_file" not in existing_handler_names
+    ):
+        LOG_DIR.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
         file_handler = logging.FileHandler(
             LOG_FILE,
             encoding="utf-8",
@@ -100,15 +141,6 @@ def configure_logging() -> None:
         file_handler.setFormatter(formatter)
 
         root_logger.addHandler(file_handler)
-
-    if "ragfury_console" not in existing_handler_names:
-        console_handler = logging.StreamHandler(sys.stdout)
-
-        console_handler.name = "ragfury_console"
-        console_handler.setLevel(log_level)
-        console_handler.setFormatter(formatter)
-
-        root_logger.addHandler(console_handler)
 
 
 def get_logger(

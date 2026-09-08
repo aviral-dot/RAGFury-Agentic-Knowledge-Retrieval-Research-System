@@ -1,7 +1,5 @@
 import asyncio
 
-from src.memory.memory_manager import MemoryManager
-
 
 async def _save_memory_turn_async(
     user_id: str,
@@ -9,6 +7,8 @@ async def _save_memory_turn_async(
     user_message: str,
     assistant_message: str,
 ):
+    from src.memory.memory_manager import MemoryManager
+
     memory_manager = MemoryManager()
 
     await memory_manager.save_turn(

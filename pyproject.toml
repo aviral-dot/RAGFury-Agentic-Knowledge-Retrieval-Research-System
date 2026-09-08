@@ -4,9 +4,9 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
+
 dependencies = [
     "beautifulsoup4>=4.13.4",
-    "faiss-cpu>=1.12.0",
     "langchain>=0.3.27",
     "langchain-community>=0.3.27",
     "langgraph>=0.6.5",
@@ -14,34 +14,23 @@ dependencies = [
     "pypdf>=6.0.0",
     "python-dotenv>=1.1.1",
     "requests>=2.32.4",
-    "streamlit>=1.48.1",
-    "wikipedia>=1.4.0",
     "langchain-groq",
-    "langchain-huggingface",
-    "sentence-transformers",
     "redis>=8.1.0",
     "fastapi>=0.141.1",
     "uvicorn[standard]>=0.52.3",
     "jsonpatch==1.33",
-    "langchain-chroma>=0.2.6",
-    "rank-bm25>=0.2.2",
     "mem0ai>=2.0.18",
     "google-genai>=2.18.1",
     "langgraph-checkpoint-postgres",
     "psycopg[binary,pool]",
-    "deepeval>=4.2.0",
-    "langchain-openai>=0.3.35",
     "nltk>=3.10.3",
     "langsmith",
     "nemoguardrails>=0.24.0",
     "rq>=2.11.0",
-    "langgraph-cli[inmem]>=0.4.13",
-    "langchain-classic>=1.0.8",
+    "qdrant-client>=1.19.0",
+    "langchain-huggingface>=1.2.2",
     "langchain-qdrant>=1.1.0",
-    "prometheus-client>=0.22.0",
-    "qdrant-client[fastembed]>=1.19.0",
-    "prometheus-client",
-    "prometheus-fastapi-instrumentator",
+    "sentence-transformers>=6.0.1",
 ]
 
 [dependency-groups]

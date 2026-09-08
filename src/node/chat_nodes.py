@@ -12,7 +12,6 @@ from langchain_core.messages import (
 
 from src.memory.memory_jobs import save_memory_turn
 from src.memory.memory_manager import MemoryManager
-from src.memory.queue import memory_queue
 from src.state.rag_state import RAGState
 from src.utils.loggers import (
     configure_logging,
@@ -368,6 +367,10 @@ Relevant long-term memories:
         )
 
         try:
+            from src.memory.queue import get_memory_queue
+
+            memory_queue = get_memory_queue()
+
             await asyncio.to_thread(
                 memory_queue.enqueue,
                 save_memory_turn,
