@@ -5,7 +5,6 @@ import os
 import time
 
 from dotenv import load_dotenv
-from mem0 import Memory
 
 from src.config.config import Config
 from src.utils.loggers import (
@@ -40,16 +39,24 @@ class Mem0Memory:
                 "provider": "openai",
                 "config": {
                     "model": "openrouter/free",
-                    "api_key": os.getenv("OPENROUTER_API_KEY"),
-                    "openai_base_url": ("https://openrouter.ai/api/v1"),
+                    "api_key": os.getenv(
+                        "OPENROUTER_API_KEY"
+                    ),
+                    "openai_base_url": (
+                        "https://openrouter.ai/api/v1"
+                    ),
                     "temperature": 0.1,
                 },
             },
             "vector_store": {
                 "provider": "qdrant",
                 "config": {
-                    "collection_name": ("ragfury_memories"),
-                    "api_key": os.getenv("QDRANT_API_KEY"),
+                    "collection_name": (
+                        "ragfury_memories"
+                    ),
+                    "api_key": os.getenv(
+                        "QDRANT_API_KEY"
+                    ),
                     "url": Config.QDRANT_URL,
                     "embedding_model_dims": 768,
                 },
@@ -57,23 +64,45 @@ class Mem0Memory:
             "embedder": {
                 "provider": "gemini",
                 "config": {
-                    "model": ("models/gemini-embedding-001"),
+                    "model": (
+                        "models/gemini-embedding-001"
+                    ),
                     "embedding_dims": 768,
-                    "api_key": os.getenv("GEMINI_API_KEY"),
+                    "api_key": os.getenv(
+                        "GEMINI_API_KEY"
+                    ),
                 },
             },
         }
 
         try:
+            mem0_dir = os.getenv(
+                "MEM0_DIR",
+                "/tmp/mem0",
+            )
+
+            os.environ["MEM0_DIR"] = mem0_dir
+
+            os.makedirs(
+                mem0_dir,
+                exist_ok=True,
+            )
+
+            from mem0 import Memory
+
             self.memory = Memory.from_config(config)
 
         except Exception as exc:
-            elapsed = (time.perf_counter() - start_time) * 1000
+            elapsed = (
+                time.perf_counter() - start_time
+            ) * 1000
 
             log_event(
                 logger,
                 level=logging.ERROR,
-                event="memory.mem0.initialization.failed",
+                event=(
+                    "memory.mem0.initialization.failed"
+                ),
                 error_type=type(exc).__name__,
                 duration_ms=round(
                     elapsed,
@@ -87,12 +116,16 @@ class Mem0Memory:
 
             raise
 
-        elapsed = (time.perf_counter() - start_time) * 1000
+        elapsed = (
+            time.perf_counter() - start_time
+        ) * 1000
 
         log_event(
             logger,
             level=logging.INFO,
-            event="memory.mem0.initialization.completed",
+            event=(
+                "memory.mem0.initialization.completed"
+            ),
             vector_store="qdrant",
             collection="ragfury_memories",
             embedding_dimensions=768,
@@ -138,7 +171,9 @@ class Mem0Memory:
             )
 
         except Exception as exc:
-            elapsed = (time.perf_counter() - start_time) * 1000
+            elapsed = (
+                time.perf_counter() - start_time
+            ) * 1000
 
             log_event(
                 logger,
@@ -162,9 +197,15 @@ class Mem0Memory:
             [],
         )
 
-        memories = [item["memory"] for item in results if item.get("memory")]
+        memories = [
+            item["memory"]
+            for item in results
+            if item.get("memory")
+        ]
 
-        elapsed = (time.perf_counter() - start_time) * 1000
+        elapsed = (
+            time.perf_counter() - start_time
+        ) * 1000
 
         log_event(
             logger,
@@ -221,7 +262,9 @@ class Mem0Memory:
             )
 
         except Exception as exc:
-            elapsed = (time.perf_counter() - start_time) * 1000
+            elapsed = (
+                time.perf_counter() - start_time
+            ) * 1000
 
             log_event(
                 logger,
@@ -240,7 +283,9 @@ class Mem0Memory:
 
             raise
 
-        elapsed = (time.perf_counter() - start_time) * 1000
+        elapsed = (
+            time.perf_counter() - start_time
+        ) * 1000
 
         result_count = None
 
@@ -248,13 +293,17 @@ class Mem0Memory:
             result,
             dict,
         ):
-            result_items = result.get("results")
+            result_items = result.get(
+                "results"
+            )
 
             if isinstance(
                 result_items,
                 list,
             ):
-                result_count = len(result_items)
+                result_count = len(
+                    result_items
+                )
 
         log_event(
             logger,
@@ -292,10 +341,14 @@ class Mem0Memory:
         )
 
         try:
-            result = self.memory.get_all(user_id=user_id)
+            result = self.memory.get_all(
+                user_id=user_id
+            )
 
         except Exception as exc:
-            elapsed = (time.perf_counter() - start_time) * 1000
+            elapsed = (
+                time.perf_counter() - start_time
+            ) * 1000
 
             log_event(
                 logger,
@@ -314,7 +367,9 @@ class Mem0Memory:
 
             raise
 
-        elapsed = (time.perf_counter() - start_time) * 1000
+        elapsed = (
+            time.perf_counter() - start_time
+        ) * 1000
 
         memory_count = (
             len(result)
@@ -337,3 +392,4 @@ class Mem0Memory:
         )
 
         return result
+
