@@ -529,15 +529,9 @@ async def lifespan(
 
             try:
                 await checkpointer.conn.execute("SELECT 1")
-                log_event(
-                    event="Checkpoint database connection test passed.",
-                    level="INFO",
-                )
+                print("CHECKPOINT_DB_TEST: PASSED")
             except Exception as exc:
-                log_event(
-                    event=f"Checkpoint database connection test FAILED: {exc}",
-                    level="ERROR",
-                )
+                print(f"CHECKPOINT_DB_TEST: FAILED: {exc}")
                 raise
 
             # -------------------------------------------------
