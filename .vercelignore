@@ -3,6 +3,7 @@
 !.env.example
 
 .venv/
+.vercel/
 .venv_old/
 
 logs/
@@ -24,4 +25,4 @@ storage/
 
 .langgraph_api/
 
-.git/
+.git

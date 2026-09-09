@@ -1,28 +1,42 @@
-"""Qdrant-backed hybrid vector store for dense + sparse retrieval."""
+"""Qdrant-backed hybrid vector store for production query-time retrieval.
 
-import asyncio
+Production architecture:
+
+    User Query
+        ↓
+    Qdrant Cloud Inference
+        ├── Dense embedding
+        └── Sparse BM25 embedding
+        ↓
+    Qdrant native RRF fusion
+        ↓
+    Top-K documents
+        ↓
+    RAG pipeline
+
+IMPORTANT:
+    This module intentionally does NOT load any local ML models.
+
+    No:
+        - HuggingFaceEmbeddings
+        - FastEmbedSparse
+        - SentenceTransformer
+        - CrossEncoder
+        - PyTorch
+        - Transformers
+
+    Embedding generation is handled by Qdrant Cloud Inference.
+"""
+
 import logging
 import os
 import time
-import uuid
-from typing import List
+from typing import Any, List
 
-from langchain_core.callbacks import (
-    AsyncCallbackManagerForRetrieverRun,
-    CallbackManagerForRetrieverRun,
-)
 from langchain_core.documents import Document
-from langchain_core.retrievers import BaseRetriever
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_qdrant import (
-    FastEmbedSparse,
-    QdrantVectorStore,
-    RetrievalMode,
-)
 from langsmith import traceable
 from pydantic import ConfigDict
-from qdrant_client import QdrantClient
-from sentence_transformers import CrossEncoder
+from qdrant_client import QdrantClient, models
 
 from src.config.config import Config
 from src.utils.loggers import (
@@ -36,111 +50,63 @@ configure_logging()
 logger = get_logger(__name__)
 
 
-class RerankingRetriever(BaseRetriever):
-    """Retrieve hybrid candidates from Qdrant and rerank them."""
+# ============================================================
+# QDRANT CLOUD INFERENCE MODELS
+# ============================================================
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+# These are model identifiers used by Qdrant Cloud.
+#
+# They DO NOT install or load these models inside the Vercel
+# Python runtime.
 
-    base_retriever: object
-    vector_store: object
-    k: int = 2
+DEFAULT_DENSE_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_SPARSE_MODEL = "Qdrant/bm25"
 
-    def _get_relevant_documents(
-        self,
-        query: str,
-        *,
-        run_manager: CallbackManagerForRetrieverRun,
-    ) -> List[Document]:
-        """
-        Synchronous BaseRetriever compatibility method.
 
-        This retriever intentionally supports async execution only.
-        Use ainvoke() for actual retrieval.
-        """
-        raise NotImplementedError(
-            "RerankingRetriever is async-only. Use ainvoke() instead of invoke()."
-        )
+# ============================================================
+# PRODUCTION COLLECTION VECTOR NAMES
+# ============================================================
 
-    @traceable(
-        name="RAGFury Hybrid Retrieval + Reranking",
-        run_type="retriever",
-    )
-    async def _aget_relevant_documents(
-        self,
-        query: str,
-        *,
-        run_manager: AsyncCallbackManagerForRetrieverRun,
-    ) -> List[Document]:
-        """Retrieve documents and apply cross-encoder reranking."""
+# IMPORTANT:
+#
+# These names MUST match the existing Qdrant production
+# collection configuration.
+#
+# Current production collection:
+#
+#   Dense vector name:
+#       ""
+#
+#   Sparse vector name:
+#       "langchain-sparse"
 
-        start_time = time.perf_counter()
-
-        log_event(
-            logger,
-            level=logging.DEBUG,
-            event="retrieval.reranking_retriever.started",
-            k=self.k,
-            query_length=len(query),
-        )
-
-        try:
-            documents = await self.base_retriever.ainvoke(query)
-
-            result = await asyncio.to_thread(
-                self.vector_store._rerank,
-                query,
-                documents,
-                self.k,
-            )
-
-            elapsed = (time.perf_counter() - start_time) * 1000
-
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="retrieval.reranking_retriever.completed",
-                candidate_count=len(documents),
-                final_document_count=len(result),
-                retrieval_k=self.vector_store.retrieval_k,
-                rerank_k=self.k,
-                duration_ms=round(elapsed, 2),
-            )
-
-            return result
-
-        except Exception as exc:
-            elapsed = (time.perf_counter() - start_time) * 1000
-
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="retrieval.reranking_retriever.failed",
-                error_type=type(exc).__name__,
-                k=self.k,
-                duration_ms=round(elapsed, 2),
-            )
-
-            logger.exception("Reranking retriever execution failed")
-
-            raise
+DEFAULT_DENSE_VECTOR_NAME = ""
+DEFAULT_SPARSE_VECTOR_NAME = "langchain-sparse"
 
 
 class VectorStore:
     """
-    Persistent hybrid retrieval using Qdrant.
+    Lightweight production Qdrant Cloud vector store.
 
-    Dense:
-        sentence-transformers/all-MiniLM-L6-v2
+    Retrieval strategy:
 
-    Sparse:
-        Qdrant/bm25 via FastEmbedSparse
+        Query
+          ↓
+        Dense Cloud Inference
+          +
+        Sparse BM25 Cloud Inference
+          ↓
+        Qdrant native RRF
+          ↓
+        Final documents
 
-    Hybrid:
-        Qdrant native hybrid retrieval
+    No local embedding or reranking models are loaded.
 
-    Reranking:
-        cross-encoder/ms-marco-MiniLM-L-6-v2
+    This makes the implementation suitable for serverless
+    environments such as Vercel.
     """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(
         self,
@@ -151,14 +117,45 @@ class VectorStore:
         rerank_k: int = 2,
         mode: str = "query",
     ):
-        """Initialize the Qdrant-backed vector store."""
+        """
+        Initialize the Qdrant Cloud query client.
+
+        Parameters
+        ----------
+        qdrant_url:
+            Qdrant Cloud endpoint.
+
+        collection_name:
+            Existing production Qdrant collection.
+
+        qdrant_api_key:
+            Qdrant Cloud API key.
+
+        retrieval_k:
+            Number of candidates retrieved from each retrieval
+            branch before Qdrant RRF fusion.
+
+        rerank_k:
+            Number of final documents returned after RRF.
+
+            NOTE:
+                There is NO local CrossEncoder reranker anymore.
+                This value now represents the final result count.
+
+        mode:
+            Production runtime should use "query".
+
+            Ingestion is intentionally handled separately.
+        """
 
         if mode not in {"query", "ingestion"}:
             raise ValueError("VectorStore mode must be either 'query' or 'ingestion'.")
 
         self.mode = mode
 
-        start_time = time.perf_counter()
+        # --------------------------------------------------------
+        # Configuration
+        # --------------------------------------------------------
 
         self.qdrant_url = qdrant_url or os.getenv(
             "QDRANT_URL",
@@ -169,8 +166,60 @@ class VectorStore:
 
         self.collection_name = collection_name
 
-        self.retrieval_k = retrieval_k
-        self.rerank_k = rerank_k
+        self.retrieval_k = max(
+            1,
+            int(retrieval_k),
+        )
+
+        self.rerank_k = max(
+            1,
+            int(rerank_k),
+        )
+
+        # --------------------------------------------------------
+        # Qdrant Cloud Inference model identifiers
+        # --------------------------------------------------------
+
+        self.dense_model = os.getenv(
+            "QDRANT_DENSE_MODEL",
+            DEFAULT_DENSE_MODEL,
+        )
+
+        self.sparse_model = os.getenv(
+            "QDRANT_SPARSE_MODEL",
+            DEFAULT_SPARSE_MODEL,
+        )
+
+        # --------------------------------------------------------
+        # Existing collection vector names
+        # --------------------------------------------------------
+
+        self.dense_vector_name = os.getenv(
+            "QDRANT_DENSE_VECTOR_NAME",
+            DEFAULT_DENSE_VECTOR_NAME,
+        )
+
+        self.sparse_vector_name = os.getenv(
+            "QDRANT_SPARSE_VECTOR_NAME",
+            DEFAULT_SPARSE_VECTOR_NAME,
+        )
+
+        # --------------------------------------------------------
+        # Runtime state
+        # --------------------------------------------------------
+
+        self.qdrant_client: QdrantClient | None = None
+
+        # Compatibility attributes.
+        #
+        # These are intentionally NOT actual LangChain local
+        # vector stores/retrievers/rerankers.
+
+        self.vectorstore = None
+        self.hybrid_retriever = None
+        self.reranker = None
+
+        start_time = time.perf_counter()
 
         log_event(
             logger,
@@ -180,16 +229,21 @@ class VectorStore:
             qdrant_url=self.qdrant_url,
             collection_name=self.collection_name,
             retrieval_k=self.retrieval_k,
-            rerank_k=self.rerank_k,
+            final_k=self.rerank_k,
+            dense_model=self.dense_model,
+            sparse_model=self.sparse_model,
+            dense_vector_name=self.dense_vector_name,
+            sparse_vector_name=self.sparse_vector_name,
         )
 
-        # -----------------------------------------------------
-        # Qdrant client
-        # -----------------------------------------------------
+        # ========================================================
+        # QDRANT CLIENT
+        # ========================================================
 
         try:
-            client_kwargs = {
+            client_kwargs: dict[str, Any] = {
                 "url": self.qdrant_url,
+                "cloud_inference": True,
             }
 
             if self.qdrant_api_key:
@@ -203,6 +257,7 @@ class VectorStore:
                 event="vectorstore.qdrant.client.initialized",
                 qdrant_url=self.qdrant_url,
                 collection_name=self.collection_name,
+                cloud_inference=True,
             )
 
         except Exception as exc:
@@ -213,120 +268,9 @@ class VectorStore:
                 error_type=type(exc).__name__,
             )
 
-            logger.exception("Failed to initialize Qdrant client")
+            logger.exception("Failed to initialize Qdrant Cloud client")
 
             raise
-
-        # -----------------------------------------------------
-        # Dense embedding model
-        # -----------------------------------------------------
-
-        embedding_start = time.perf_counter()
-
-        try:
-            self.embedding = HuggingFaceEmbeddings(
-                model_name=("sentence-transformers/all-MiniLM-L6-v2")
-            )
-
-            embedding_elapsed = (time.perf_counter() - embedding_start) * 1000
-
-            log_event(
-                logger,
-                level=logging.DEBUG,
-                event="vectorstore.embedding.initialized",
-                model_name=("sentence-transformers/all-MiniLM-L6-v2"),
-                duration_ms=round(
-                    embedding_elapsed,
-                    2,
-                ),
-            )
-
-        except Exception as exc:
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="vectorstore.embedding.initialization.failed",
-                error_type=type(exc).__name__,
-            )
-
-            logger.exception("Failed to initialize dense embedding model")
-
-            raise
-
-        # -----------------------------------------------------
-        # Sparse BM25 embedding model
-        # -----------------------------------------------------
-
-        sparse_start = time.perf_counter()
-
-        try:
-            self.sparse_embedding = FastEmbedSparse(model_name="Qdrant/bm25")
-
-            sparse_elapsed = (time.perf_counter() - sparse_start) * 1000
-
-            log_event(
-                logger,
-                level=logging.DEBUG,
-                event="vectorstore.sparse_embedding.initialized",
-                model_name="Qdrant/bm25",
-                duration_ms=round(
-                    sparse_elapsed,
-                    2,
-                ),
-            )
-
-        except Exception as exc:
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="vectorstore.sparse_embedding.initialization.failed",
-                error_type=type(exc).__name__,
-            )
-
-            logger.exception("Failed to initialize sparse embedding model")
-
-            raise
-
-        # -----------------------------------------------------
-        # Cross-encoder reranker
-        # -----------------------------------------------------
-
-        reranker_start = time.perf_counter()
-
-        try:
-            self.reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-
-            reranker_elapsed = (time.perf_counter() - reranker_start) * 1000
-
-            log_event(
-                logger,
-                level=logging.DEBUG,
-                event="vectorstore.reranker.initialized",
-                model_name=("cross-encoder/ms-marco-MiniLM-L-6-v2"),
-                duration_ms=round(
-                    reranker_elapsed,
-                    2,
-                ),
-            )
-
-        except Exception as exc:
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="vectorstore.reranker.initialization.failed",
-                error_type=type(exc).__name__,
-            )
-
-            logger.exception("Failed to initialize reranker")
-
-            raise
-
-        # -----------------------------------------------------
-        # Runtime state
-        # -----------------------------------------------------
-
-        self.vectorstore: QdrantVectorStore | None = None
-        self.hybrid_retriever = None
 
         elapsed = (time.perf_counter() - start_time) * 1000
 
@@ -338,330 +282,88 @@ class VectorStore:
             duration_ms=round(elapsed, 2),
         )
 
-    # =========================================================
-    # QDRANT INITIALIZATION
-    # =========================================================
-
-    def _initialize_qdrant(
-        self,
-        create_if_missing: bool = False,
-    ) -> None:
-        """
-        Initialize the Qdrant vector store.
-
-        If the collection already exists, connect to it.
-
-        If create_if_missing is True, create the collection
-        using the first ingestion operation.
-        """
-
-        start_time = time.perf_counter()
-
-        log_event(
-            logger,
-            level=logging.DEBUG,
-            event="vectorstore.qdrant.initialization.started",
-            collection_name=self.collection_name,
-            qdrant_url=self.qdrant_url,
-        )
-
-        try:
-            collection_exists = self.qdrant_client.collection_exists(
-                self.collection_name
-            )
-
-            if not collection_exists:
-                if not create_if_missing:
-                    log_event(
-                        logger,
-                        level=logging.WARNING,
-                        event="vectorstore.qdrant.collection.missing",
-                        collection_name=(self.collection_name),
-                    )
-
-                    raise RuntimeError(
-                        "Qdrant collection "
-                        f"'{self.collection_name}' "
-                        "does not exist. "
-                        "Initialize the vector store with "
-                        "new documents first so the collection "
-                        "can be created."
-                    )
-
-                log_event(
-                    logger,
-                    level=logging.INFO,
-                    event="vectorstore.qdrant.collection.creation.deferred",
-                    collection_name=(self.collection_name),
-                )
-
-                return
-
-            self.vectorstore = QdrantVectorStore.from_existing_collection(
-                embedding=self.embedding,
-                sparse_embedding=self.sparse_embedding,
-                collection_name=self.collection_name,
-                url=self.qdrant_url,
-                api_key=self.qdrant_api_key,
-                retrieval_mode=RetrievalMode.HYBRID,
-            )
-
-            elapsed = (time.perf_counter() - start_time) * 1000
-
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="vectorstore.qdrant.initialization.completed",
-                collection_name=self.collection_name,
-                duration_ms=round(
-                    elapsed,
-                    2,
-                ),
-            )
-
-        except RuntimeError:
-            raise
-
-        except Exception as exc:
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="vectorstore.qdrant.initialization.failed",
-                collection_name=self.collection_name,
-                error_type=type(exc).__name__,
-            )
-
-            logger.exception("Failed to initialize Qdrant vector store")
-
-            raise
-
-    # =========================================================
-    # ADD DOCUMENTS
-    # =========================================================
-
-    def add_documents(
-        self,
-        documents: List[Document],
-    ) -> None:
-        """
-        Add document chunks to Qdrant.
-
-        Qdrant point IDs are UUIDs.
-        Citation identity is preserved separately in document metadata:
-
-        source
-        page
-        chunk_id
-        """
-
-        if not documents:
-            log_event(
-                logger,
-                level=logging.DEBUG,
-                event="vectorstore.documents.add.skipped",
-                reason="empty_document_list",
-            )
-
-            return
-
-        start_time = time.perf_counter()
-
-        log_event(
-            logger,
-            level=logging.INFO,
-            event="vectorstore.documents.add.started",
-            document_count=len(documents),
-            collection_name=self.collection_name,
-        )
-
-        try:
-            collection_exists = self.qdrant_client.collection_exists(
-                self.collection_name
-            )
-
-            # -------------------------------------------------
-            # Build valid Qdrant point IDs
-            # -------------------------------------------------
-
-            ids: list[str] = []
-
-            for document in documents:
-                source = str(document.metadata["source"])
-
-                chunk_id = str(document.metadata["chunk_id"])
-
-                # Citation identity stays in metadata.
-                #
-                # Qdrant itself requires a UUID/integer
-                # point ID, so do NOT use chunk_id here.
-                document.metadata["source"] = source
-                document.metadata["chunk_id"] = chunk_id
-
-                ids.append(str(uuid.uuid4()))
-
-            # -------------------------------------------------
-            # Create collection
-            # -------------------------------------------------
-
-            if not collection_exists:
-                log_event(
-                    logger,
-                    level=logging.INFO,
-                    event="vectorstore.qdrant.collection.creating",
-                    collection_name=self.collection_name,
-                )
-
-                self.vectorstore = QdrantVectorStore.from_documents(
-                    documents=documents,
-                    embedding=self.embedding,
-                    sparse_embedding=self.sparse_embedding,
-                    ids=ids,
-                    url=self.qdrant_url,
-                    api_key=self.qdrant_api_key,
-                    collection_name=self.collection_name,
-                    retrieval_mode=RetrievalMode.HYBRID,
-                )
-
-                log_event(
-                    logger,
-                    level=logging.INFO,
-                    event="vectorstore.qdrant.collection.created",
-                    collection_name=self.collection_name,
-                    document_count=len(documents),
-                )
-
-            # -------------------------------------------------
-            # Existing collection
-            # -------------------------------------------------
-
-            else:
-                if self.vectorstore is None:
-                    self.vectorstore = QdrantVectorStore.from_existing_collection(
-                        embedding=self.embedding,
-                        sparse_embedding=self.sparse_embedding,
-                        collection_name=self.collection_name,
-                        url=self.qdrant_url,
-                        api_key=self.qdrant_api_key,
-                        retrieval_mode=RetrievalMode.HYBRID,
-                    )
-
-                self.vectorstore.add_documents(
-                    documents=documents,
-                    ids=ids,
-                )
-
-            elapsed = (time.perf_counter() - start_time) * 1000
-
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="vectorstore.documents.add.completed",
-                document_count=len(documents),
-                collection_name=self.collection_name,
-                duration_ms=round(elapsed, 2),
-            )
-
-        except Exception as exc:
-            elapsed = (time.perf_counter() - start_time) * 1000
-
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="vectorstore.documents.add.failed",
-                document_count=len(documents),
-                collection_name=self.collection_name,
-                error_type=type(exc).__name__,
-                duration_ms=round(elapsed, 2),
-            )
-
-            logger.exception("Failed to add documents to Qdrant")
-
-            raise
-
-    # =========================================================
-    # INITIALIZE HYBRID RETRIEVER
-    # =========================================================
+    # ============================================================
+    # COLLECTION INITIALIZATION
+    # ============================================================
 
     def initialize(
         self,
         new_documents: List[Document] | None = None,
     ) -> None:
         """
-        Initialize the persistent Qdrant hybrid retriever.
+        Validate and initialize the existing production
+        Qdrant collection.
 
-        If new_documents are supplied, they are added to Qdrant.
+        The deployed API is query-only.
+
+        Document ingestion must be performed by the separate
+        ingestion pipeline.
         """
 
         start_time = time.perf_counter()
 
-        new_document_count = len(new_documents) if new_documents else 0
+        # --------------------------------------------------------
+        # Production query runtime only
+        # --------------------------------------------------------
+
+        if self.mode == "ingestion":
+            raise RuntimeError(
+                "Production VectorStore is query-only. "
+                "Document ingestion must be performed by "
+                "the separate ingestion pipeline."
+            )
+
+        if new_documents:
+            raise RuntimeError(
+                "Document ingestion is not supported by the "
+                "production query VectorStore. "
+                "Use the dedicated ingestion pipeline."
+            )
 
         log_event(
             logger,
             level=logging.INFO,
             event="vectorstore.hybrid.initialization.started",
-            new_document_count=new_document_count,
             collection_name=self.collection_name,
+            retrieval_k=self.retrieval_k,
+            final_k=self.rerank_k,
         )
 
         try:
+            if self.qdrant_client is None:
+                raise RuntimeError("Qdrant client is not initialized.")
+
+            # ----------------------------------------------------
+            # Verify collection exists
+            # ----------------------------------------------------
+
             collection_exists = self.qdrant_client.collection_exists(
                 self.collection_name
             )
 
-            # -------------------------------------------------
-            # First ingestion
-            # -------------------------------------------------
-
             if not collection_exists:
-                if not new_documents:
-                    raise ValueError(
-                        "Qdrant collection does not exist "
-                        "and no documents were supplied "
-                        "for initial ingestion."
-                    )
-
-                self.add_documents(new_documents)
-
-            # -------------------------------------------------
-            # Existing collection
-            # -------------------------------------------------
-
-            elif new_documents:
-                self.add_documents(new_documents)
-
-            # -------------------------------------------------
-            # Make sure vector store is connected
-            # -------------------------------------------------
-
-            if self.vectorstore is None:
-                self.vectorstore = QdrantVectorStore.from_existing_collection(
-                    embedding=self.embedding,
-                    sparse_embedding=(self.sparse_embedding),
-                    collection_name=(self.collection_name),
-                    url=self.qdrant_url,
-                    api_key=self.qdrant_api_key,
-                    retrieval_mode=(RetrievalMode.HYBRID),
+                raise RuntimeError(
+                    f"Qdrant collection '{self.collection_name}' does not exist."
                 )
 
-            # -------------------------------------------------
-            # Create hybrid retriever
-            # -------------------------------------------------
+            # ----------------------------------------------------
+            # Verify collection contains documents
+            # ----------------------------------------------------
 
-            self.hybrid_retriever = self.vectorstore.as_retriever(
-                search_kwargs={
-                    "k": self.retrieval_k,
-                }
-            )
+            collection_info = self.qdrant_client.get_collection(self.collection_name)
 
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="vectorstore.hybrid_retriever.initialized",
-                retrieval_k=self.retrieval_k,
-                rerank_k=self.rerank_k,
-                collection_name=(self.collection_name),
-            )
+            points_count = collection_info.points_count or 0
+
+            if points_count <= 0:
+                raise RuntimeError(
+                    f"Qdrant collection '{self.collection_name}' contains no points."
+                )
+
+            # ----------------------------------------------------
+            # Mark retrieval as initialized
+            # ----------------------------------------------------
+
+            self.hybrid_retriever = True
 
             elapsed = (time.perf_counter() - start_time) * 1000
 
@@ -669,12 +371,13 @@ class VectorStore:
                 logger,
                 level=logging.INFO,
                 event="vectorstore.hybrid.initialization.completed",
-                document_count=(self.get_document_count()),
-                new_document_count=(new_document_count),
-                duration_ms=round(
-                    elapsed,
-                    2,
-                ),
+                collection_name=self.collection_name,
+                document_count=points_count,
+                retrieval_k=self.retrieval_k,
+                final_k=self.rerank_k,
+                dense_model=self.dense_model,
+                sparse_model=self.sparse_model,
+                duration_ms=round(elapsed, 2),
             )
 
         except Exception as exc:
@@ -684,212 +387,93 @@ class VectorStore:
                 logger,
                 level=logging.ERROR,
                 event="vectorstore.hybrid.initialization.failed",
+                collection_name=self.collection_name,
                 error_type=type(exc).__name__,
-                duration_ms=round(
-                    elapsed,
-                    2,
-                ),
+                duration_ms=round(elapsed, 2),
             )
 
-            logger.exception("Failed to initialize Qdrant hybrid vector store")
+            logger.exception("Failed to initialize Qdrant production retriever")
 
             raise
 
-    # =========================================================
+    # ============================================================
     # GET RETRIEVER
-    # =========================================================
+    # ============================================================
 
     def get_retriever(
         self,
         k: int | None = None,
     ):
         """
-        Return Qdrant hybrid retriever with reranking.
+        Return a lightweight LangChain-compatible retriever.
 
-        Qdrant retrieves retrieval_k candidates.
-        CrossEncoder returns the final k documents.
+        The returned retriever delegates directly to
+        VectorStore.retrieve().
         """
 
         if self.hybrid_retriever is None:
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="vectorstore.retriever.creation.failed",
-                reason=("hybrid_retriever_not_initialized"),
+            raise ValueError(
+                "Hybrid retriever not initialized. Call initialize() first."
             )
 
-            raise ValueError("Hybrid retriever not initialized.")
-
-        final_k = k if k is not None else self.rerank_k
+        final_k = max(
+            1,
+            int(k if k is not None else self.rerank_k),
+        )
 
         log_event(
             logger,
             level=logging.DEBUG,
             event="vectorstore.retriever.created",
-            retriever_type="qdrant_hybrid_reranking",
+            retriever_type="qdrant_cloud_hybrid",
             retrieval_k=self.retrieval_k,
-            rerank_k=final_k,
+            final_k=final_k,
         )
 
-        return RerankingRetriever(
-            base_retriever=self.hybrid_retriever,
+        return QdrantCloudRetriever(
             vector_store=self,
             k=final_k,
         )
 
-    # =========================================================
-    # RERANK
-    # =========================================================
+    # ============================================================
+    # QUERY / HYBRID RETRIEVAL
+    # ============================================================
 
-    def _rerank(
-        self,
-        query: str,
-        documents: List[Document],
-        k: int,
-        min_score: float = 0.0,
-    ) -> List[Document]:
-        """Rerank retrieved documents using CrossEncoder."""
-
-        if self.reranker is None:
-            raise RuntimeError(
-                "Reranking is unavailable because the VectorStore "
-                "was initialized in ingestion mode."
-            )
-
-        if not documents:
-            log_event(
-                logger,
-                level=logging.DEBUG,
-                event="retrieval.reranking.skipped",
-                reason="no_documents",
-                k=k,
-            )
-
-            return []
-
-        start_time = time.perf_counter()
-
-        log_event(
-            logger,
-            level=logging.DEBUG,
-            event="retrieval.reranking.started",
-            input_document_count=len(documents),
-            k=k,
-            min_score=min_score,
-            query_length=len(query),
-        )
-
-        try:
-            pairs = [
-                (
-                    query,
-                    document.page_content,
-                )
-                for document in documents
-            ]
-
-            scores = self.reranker.predict(pairs)
-
-            ranked_documents = sorted(
-                zip(
-                    scores,
-                    documents,
-                ),
-                key=lambda item: float(item[0]),
-                reverse=True,
-            )
-
-            filtered = [
-                document
-                for score, document in ranked_documents
-                if float(score) >= min_score
-            ]
-
-            result = filtered[:k]
-
-            elapsed_seconds = time.perf_counter() - start_time
-            elapsed_ms = elapsed_seconds * 1000
-
-            top_score = float(ranked_documents[0][0]) if ranked_documents else None
-
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="retrieval.reranking.completed",
-                input_document_count=len(documents),
-                output_document_count=len(result),
-                filtered_document_count=len(filtered),
-                k=k,
-                min_score=min_score,
-                top_score=(round(top_score, 4) if top_score is not None else None),
-                duration_ms=round(
-                    elapsed_ms,
-                    2,
-                ),
-            )
-
-            log_event(
-                logger,
-                level=logging.INFO,
-                event="retrieval.reranking.results",
-                results=[
-                    {
-                        "rank": rank,
-                        "score": round(float(score), 4),
-                        "source": document.metadata.get("source"),
-                        "chunk_id": document.metadata.get("chunk_id"),
-                        "chunk_index": document.metadata.get("chunk_index"),
-                    }
-                    for rank, (score, document) in enumerate(
-                        ranked_documents,
-                        start=1,
-                    )
-                ],
-            )
-            return result
-
-        except Exception as exc:
-            elapsed_seconds = time.perf_counter() - start_time
-            elapsed_ms = elapsed_seconds * 1000
-
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="retrieval.reranking.failed",
-                input_document_count=len(documents),
-                k=k,
-                error_type=type(exc).__name__,
-                duration_ms=round(
-                    elapsed_ms,
-                    2,
-                ),
-            )
-
-            logger.exception("Document reranking failed")
-
-            raise
-
-    # =========================================================
-    # RETRIEVE
-    # =========================================================
-
+    @traceable(
+        name="RAGFury Qdrant Cloud Hybrid Retrieval",
+        run_type="retriever",
+    )
     async def retrieve(
         self,
         query: str,
         k: int = 2,
     ) -> List[Document]:
-        """Retrieve hybrid Qdrant results and rerank them."""
+        """
+        Retrieve documents using Qdrant Cloud Inference.
 
-        if self.hybrid_retriever is None:
-            log_event(
-                logger,
-                level=logging.ERROR,
-                event="retrieval.failed",
-                reason=("hybrid_retriever_not_initialized"),
-                k=k,
-            )
+        Pipeline:
 
-            raise ValueError("Hybrid retriever not initialized.")
+            query
+              ↓
+            Dense Cloud Inference
+              +
+            Sparse BM25 Cloud Inference
+              ↓
+            Qdrant native RRF
+              ↓
+            top-k documents
+        """
+
+        if self.qdrant_client is None:
+            raise RuntimeError("Qdrant client is not initialized.")
+
+        if not query or not query.strip():
+            return []
+
+        final_k = max(
+            1,
+            int(k),
+        )
 
         start_time = time.perf_counter()
 
@@ -899,91 +483,228 @@ class VectorStore:
             event="retrieval.started",
             query_length=len(query),
             retrieval_k=self.retrieval_k,
-            rerank_k=k,
+            final_k=final_k,
         )
 
         try:
-            # -------------------------------------------------
-            # Qdrant hybrid retrieval
-            # -------------------------------------------------
+            # ====================================================
+            # CLOUD INFERENCE QUERIES
+            # ====================================================
 
-            documents = await self.hybrid_retriever.ainvoke(query)
+            # Dense embedding generated by Qdrant Cloud.
+            dense_query = models.Document(
+                text=query,
+                model=self.dense_model,
+            )
+
+            # Sparse BM25 representation generated by
+            # Qdrant Cloud.
+            sparse_query = models.Document(
+                text=query,
+                model=self.sparse_model,
+            )
+
+            # ====================================================
+            # QDRANT HYBRID RETRIEVAL
+            # ====================================================
+
+            response = self.qdrant_client.query_points(
+                collection_name=self.collection_name,
+                prefetch=[
+                    # ----------------------------------------
+                    # Dense retrieval
+                    # ----------------------------------------
+                    models.Prefetch(
+                        query=dense_query,
+                        using=self.dense_vector_name,
+                        limit=self.retrieval_k,
+                    ),
+                    # ----------------------------------------
+                    # Sparse BM25 retrieval
+                    # ----------------------------------------
+                    models.Prefetch(
+                        query=sparse_query,
+                        using=self.sparse_vector_name,
+                        limit=self.retrieval_k,
+                    ),
+                ],
+                # --------------------------------------------
+                # Native Qdrant Reciprocal Rank Fusion
+                # --------------------------------------------
+                query=models.FusionQuery(
+                    fusion=models.Fusion.RRF,
+                ),
+                # --------------------------------------------
+                # Final result count
+                # --------------------------------------------
+                limit=final_k,
+                # --------------------------------------------
+                # Return document payload
+                # --------------------------------------------
+                with_payload=True,
+            )
+
+            points = response.points
+
+            # ====================================================
+            # CONVERT QDRANT POINTS → LANGCHAIN DOCUMENTS
+            # ====================================================
+
+            documents: list[Document] = []
+
+            for rank, point in enumerate(
+                points,
+                start=1,
+            ):
+                payload = point.payload or {}
+
+                # -----------------------------------------------
+                # Page content
+                # -----------------------------------------------
+
+                page_content = payload.get(
+                    "page_content",
+                    "",
+                )
+
+                # -----------------------------------------------
+                # Metadata
+                # -----------------------------------------------
+
+                metadata = payload.get(
+                    "metadata",
+                    {},
+                )
+
+                if not isinstance(
+                    metadata,
+                    dict,
+                ):
+                    metadata = {}
+
+                metadata = dict(metadata)
+
+                # -----------------------------------------------
+                # Preserve Qdrant information
+                # -----------------------------------------------
+
+                metadata.setdefault(
+                    "qdrant_point_id",
+                    str(point.id),
+                )
+
+                metadata.setdefault(
+                    "qdrant_score",
+                    float(point.score),
+                )
+
+                metadata.setdefault(
+                    "retrieval_rank",
+                    rank,
+                )
+
+                documents.append(
+                    Document(
+                        page_content=str(page_content),
+                        metadata=metadata,
+                    )
+                )
+
+            # ====================================================
+            # LOG RETRIEVAL RESULTS
+            # ====================================================
 
             log_event(
                 logger,
                 level=logging.INFO,
-                event="retrieval.qdrant.candidates",
-                candidates=[
+                event="retrieval.qdrant.completed",
+                candidate_count=len(documents),
+                retrieval_k=self.retrieval_k,
+                final_k=final_k,
+            )
+
+            log_event(
+                logger,
+                level=logging.DEBUG,
+                event="retrieval.qdrant.results",
+                results=[
                     {
                         "rank": rank,
-                        "source": document.metadata.get("source"),
-                        "chunk_id": document.metadata.get("chunk_id"),
-                        "chunk_index": document.metadata.get("chunk_index"),
-                        "content_preview": document.page_content[:500],
+                        "score": round(
+                            float(point.score),
+                            6,
+                        ),
+                        "source": (
+                            point.payload.get("metadata", {}).get("source")
+                            if isinstance(
+                                point.payload,
+                                dict,
+                            )
+                            else None
+                        ),
+                        "chunk_id": (
+                            point.payload.get("metadata", {}).get("chunk_id")
+                            if isinstance(
+                                point.payload,
+                                dict,
+                            )
+                            else None
+                        ),
                     }
-                    for rank, document in enumerate(
-                        documents,
+                    for rank, point in enumerate(
+                        points,
                         start=1,
                     )
                 ],
             )
 
-            # -------------------------------------------------
-            # CrossEncoder reranking
-            # -------------------------------------------------
-
-            result = await asyncio.to_thread(
-                self._rerank,
-                query=query,
-                documents=documents,
-                k=k,
-            )
-
-            elapsed_seconds = time.perf_counter() - start_time
-            elapsed_ms = elapsed_seconds * 1000
+            elapsed = (time.perf_counter() - start_time) * 1000
 
             log_event(
                 logger,
                 level=logging.INFO,
                 event="retrieval.completed",
                 initial_document_count=len(documents),
-                final_document_count=len(result),
+                final_document_count=len(documents),
                 retrieval_k=self.retrieval_k,
-                rerank_k=k,
+                final_k=final_k,
                 duration_ms=round(
-                    elapsed_ms,
+                    elapsed,
                     2,
                 ),
             )
 
-            return result
+            return documents
 
         except Exception as exc:
-            elapsed_seconds = time.perf_counter() - start_time
-            elapsed_ms = elapsed_seconds * 1000
+            elapsed = (time.perf_counter() - start_time) * 1000
 
             log_event(
                 logger,
                 level=logging.ERROR,
                 event="retrieval.failed",
-                k=k,
                 error_type=type(exc).__name__,
+                retrieval_k=self.retrieval_k,
+                final_k=final_k,
                 duration_ms=round(
-                    elapsed_ms,
+                    elapsed,
                     2,
                 ),
             )
 
-            logger.exception("Qdrant hybrid retrieval failed")
+            logger.exception("Qdrant Cloud hybrid retrieval failed")
 
             raise
 
-    # =========================================================
+    # ============================================================
     # DOCUMENT COUNT
-    # =========================================================
+    # ============================================================
 
     def get_document_count(self) -> int:
         """Return the number of points stored in Qdrant."""
+
+        if self.qdrant_client is None:
+            raise RuntimeError("Qdrant client is not initialized.")
 
         try:
             collection_info = self.qdrant_client.get_collection(self.collection_name)
@@ -996,7 +717,7 @@ class VectorStore:
                 event="vectorstore.document_count.completed",
                 count=count,
                 source="qdrant",
-                collection_name=(self.collection_name),
+                collection_name=self.collection_name,
             )
 
             return int(count)
@@ -1008,9 +729,58 @@ class VectorStore:
                 event="vectorstore.document_count.failed",
                 error_type=type(exc).__name__,
                 source="qdrant",
-                collection_name=(self.collection_name),
+                collection_name=self.collection_name,
             )
 
             logger.exception("Failed to retrieve Qdrant document count")
 
-            return 0
+            raise
+
+
+# ================================================================
+# LANGCHAIN-COMPATIBLE RETRIEVER
+# ================================================================
+
+
+class QdrantCloudRetriever:
+    """
+    Lightweight LangChain-compatible async retriever.
+
+    This replaces the old:
+
+        BaseRetriever
+        +
+        local CrossEncoder
+
+    implementation.
+
+    Retrieval is performed entirely through:
+
+        Qdrant Cloud Inference
+        +
+        Qdrant native RRF
+    """
+
+    def __init__(
+        self,
+        vector_store: VectorStore,
+        k: int = 2,
+    ):
+        self.vector_store = vector_store
+
+        self.k = max(
+            1,
+            int(k),
+        )
+
+    async def ainvoke(
+        self,
+        query: str,
+        **_: Any,
+    ) -> List[Document]:
+        """LangChain-compatible async retrieval."""
+
+        return await self.vector_store.retrieve(
+            query=query,
+            k=self.k,
+        )

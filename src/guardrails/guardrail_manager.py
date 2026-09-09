@@ -27,17 +27,9 @@ if not NVIDIA_API_KEY:
 
 GUARDRAIL_DIR = Path(__file__).resolve().parent
 
-_rails = None
+config = RailsConfig.from_path(str(GUARDRAIL_DIR))
 
-
-def get_rails():
-    global _rails
-
-    if _rails is None:
-        config = RailsConfig.from_path(str(GUARDRAIL_DIR))
-        _rails = LLMRails(config)
-
-    return _rails
+rails = LLMRails(config)
 
 
 # ============================================================
@@ -68,7 +60,7 @@ async def check_input(
         print("INPUT GUARDRAIL")
         print("=" * 70)
 
-        result = await get_rails().check_async(
+        result = await rails.check_async(
             messages=[
                 {
                     "role": "user",
@@ -202,7 +194,7 @@ DOCUMENT {index}
         # the security classifier as untrusted content.
         # ----------------------------------------------------
 
-        result = await get_rails().check_async(
+        result = await rails.check_async(
             messages=[
                 {
                     "role": "user",
@@ -340,7 +332,7 @@ async def check_output(
         print("OUTPUT GUARDRAIL")
         print("=" * 70)
 
-        result = await get_rails().check_async(
+        result = await rails.check_async(
             messages=[
                 {
                     "role": "assistant",
