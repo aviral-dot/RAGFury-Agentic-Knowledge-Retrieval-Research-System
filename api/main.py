@@ -527,6 +527,19 @@ async def lifespan(
 
             rag_service.checkpointer = checkpointer
 
+            try:
+                await checkpointer.conn.execute("SELECT 1")
+                log_event(
+                    "Checkpoint database connection test passed.",
+                    level="INFO",
+                )
+            except Exception as exc:
+                log_event(
+                    f"Checkpoint database connection test FAILED: {exc}",
+                    level="ERROR",
+                )
+                raise
+
             # -------------------------------------------------
             # Initialize complete RAG pipeline
             # -------------------------------------------------
