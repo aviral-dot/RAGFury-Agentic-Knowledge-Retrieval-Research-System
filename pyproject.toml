@@ -28,6 +28,8 @@ dependencies = [
     "nemoguardrails>=0.24.0",
     "rq>=2.11.0",
     "qdrant-client>=1.19.0",
+    "jsonpointer>=3.0.0",
+    "streamlit>=1.63.0",
 ]
 
 [dependency-groups]

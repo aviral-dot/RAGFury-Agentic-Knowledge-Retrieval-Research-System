@@ -21,4 +21,8 @@ uv run pytest tests/evals/components/rag -v
 
 rq worker memory --worker-class rq.worker.SimpleWorker
 
-python -c "import asyncio, selectors, uvicorn; config=uvicorn.Config('api.main:app', host='0.0.0.0', port=8000); server=uvicorn.Server(config); asyncio.Runner(loop_factory=lambda: asyncio.SelectorEventLoop(selectors.SelectSelector())).run(server.serve())"
+$env:SSL_CERT_FILE = (python -c "import certifi; print(certifi.where())")
+streamlit run streamlit_app.py
+# python -c "import asyncio, selectors, uvicorn; config=uvicorn.Config('api.main:app', host='0.0.0.0', port=8000); server=uvicorn.Server(config); asyncio.Runner(loop_factory=lambda: asyncio.SelectorEventLoop(selectors.SelectSelector())).run(server.serve())"
+
+#uv run python run_server.py
