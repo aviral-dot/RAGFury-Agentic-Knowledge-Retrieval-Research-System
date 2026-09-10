@@ -36,6 +36,184 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+
+/* ============================================================
+   RAG SOURCES
+   ============================================================ */
+
+.rag-sources-header {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+
+    margin-top: 18px;
+    margin-bottom: 10px;
+
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+
+    color: rgba(235, 238, 245, 0.72) !important;
+}
+
+.rag-sources-dot {
+    width: 6px;
+    height: 6px;
+
+    border-radius: 50%;
+
+    background: #8fa8ff;
+
+    box-shadow:
+        0 0 10px rgba(143, 168, 255, 0.65);
+}
+
+
+/* ------------------------------------------------------------
+   SOURCE CARD
+   ------------------------------------------------------------ */
+
+.rag-source-card {
+    display: flex;
+    align-items: center;
+
+    width: 100%;
+    box-sizing: border-box;
+
+    margin: 7px 0;
+    padding: 12px 14px;
+
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 12px;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(255,255,255,0.055),
+            rgba(255,255,255,0.025)
+        );
+
+    backdrop-filter: blur(12px);
+
+    transition:
+        transform 0.2s ease,
+        border-color 0.2s ease,
+        background 0.2s ease;
+}
+
+
+/* ------------------------------------------------------------
+   HOVER
+   ------------------------------------------------------------ */
+
+.rag-source-card:hover {
+    transform: translateY(-1px);
+
+    border-color: rgba(143,168,255,0.30);
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(255,255,255,0.075),
+            rgba(255,255,255,0.035)
+        );
+}
+
+
+/* ------------------------------------------------------------
+   NUMBER
+   ------------------------------------------------------------ */
+
+.rag-source-number {
+    flex-shrink: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 30px;
+    height: 30px;
+
+    margin-right: 12px;
+
+    border-radius: 8px;
+
+    background: rgba(143,168,255,0.10);
+
+    border: 1px solid rgba(143,168,255,0.18);
+
+    color: rgba(190,205,255,0.9);
+
+    font-size: 10px;
+    font-weight: 700;
+
+    letter-spacing: 0.04em;
+}
+
+
+/* ------------------------------------------------------------
+   CONTENT
+   ------------------------------------------------------------ */
+
+.rag-source-content {
+    min-width: 0;
+    flex: 1;
+}
+
+
+/* ------------------------------------------------------------
+   FILE NAME
+   ------------------------------------------------------------ */
+
+.rag-source-name {
+    color: #f1f3f7 !important;
+
+    font-size: 13px;
+    font-weight: 600;
+
+    line-height: 1.35;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* ------------------------------------------------------------
+   METADATA
+   ------------------------------------------------------------ */
+
+.rag-source-meta {
+    margin-top: 4px;
+
+    color: rgba(190,196,210,0.58) !important;
+
+    font-size: 10px;
+
+    letter-spacing: 0.02em;
+}
+
+
+/* ------------------------------------------------------------
+   MOBILE
+   ------------------------------------------------------------ */
+
+@media (max-width: 768px) {
+
+    .rag-source-card {
+        padding: 10px 11px;
+    }
+
+    .rag-source-name {
+        font-size: 12px;
+    }
+
+    .rag-source-number {
+        width: 27px;
+        height: 27px;
+        margin-right: 9px;
+    }
+}
     
     
     
@@ -2260,78 +2438,183 @@ def display_route(route):
 
 
 # ============================================================
-# CITATIONS
+# CITATIONS / SOURCES
 # ============================================================
 
-def display_citations(citations):
+def display_citations(citations, documents=None):
+    """
+    Render RAG citations robustly.
 
-    if not citations:
+    Supports citations coming directly from:
+        result["citations"]
+
+    and falls back to:
+        result["documents"][...]["metadata"]
+    """
+
+    normalized = []
+
+    # --------------------------------------------------------
+    # 1. DIRECT CITATIONS
+    # --------------------------------------------------------
+
+    if isinstance(citations, list):
+        for index, citation in enumerate(citations, start=1):
+
+            if isinstance(citation, str):
+                normalized.append({
+                    "id": f"S{index}",
+                    "source": citation,
+                    "page": None,
+                    "chunk": None,
+                })
+                continue
+
+            if not isinstance(citation, dict):
+                continue
+
+            metadata = citation.get("metadata") or {}
+
+            source = (
+                citation.get("source")
+                or citation.get("file_name")
+                or citation.get("filename")
+                or citation.get("document")
+                or metadata.get("source")
+                or metadata.get("file_name")
+                or metadata.get("filename")
+                or metadata.get("document")
+            )
+
+            page = (
+                citation.get("page")
+                or citation.get("page_number")
+                or metadata.get("page")
+                or metadata.get("page_number")
+            )
+
+            chunk = (
+                citation.get("chunk_id")
+                or citation.get("chunk")
+                or metadata.get("chunk_id")
+                or metadata.get("chunk")
+            )
+
+            citation_id = (
+                citation.get("citation_id")
+                or citation.get("id")
+                or f"S{index}"
+            )
+
+            if source or page or chunk:
+                normalized.append({
+                    "id": citation_id,
+                    "source": source or "Retrieved document",
+                    "page": page,
+                    "chunk": chunk,
+                })
+
+    # --------------------------------------------------------
+    # 2. FALLBACK TO RETRIEVED DOCUMENTS
+    # --------------------------------------------------------
+
+    if not normalized and isinstance(documents, list):
+
+        for index, document in enumerate(documents, start=1):
+
+            if not isinstance(document, dict):
+                continue
+
+            metadata = document.get("metadata") or {}
+
+            source = (
+                document.get("source")
+                or document.get("file_name")
+                or document.get("filename")
+                or document.get("document")
+                or metadata.get("source")
+                or metadata.get("file_name")
+                or metadata.get("filename")
+                or metadata.get("document")
+            )
+
+            page = (
+                document.get("page")
+                or document.get("page_number")
+                or metadata.get("page")
+                or metadata.get("page_number")
+            )
+
+            chunk = (
+                document.get("chunk_id")
+                or document.get("chunk")
+                or metadata.get("chunk_id")
+                or metadata.get("chunk")
+            )
+
+            if source or page or chunk:
+                normalized.append({
+                    "id": f"S{index}",
+                    "source": source or "Retrieved document",
+                    "page": page,
+                    "chunk": chunk,
+                })
+
+    # --------------------------------------------------------
+    # 3. NOTHING TO SHOW
+    # --------------------------------------------------------
+
+    if not normalized:
         return
 
+    # --------------------------------------------------------
+    # 4. SOURCE HEADER
+    # --------------------------------------------------------
+
     st.markdown(
-        '<div class="rf-label">Sources</div>',
+        """
+        <div class="rag-sources-header">
+            <span class="rag-sources-dot"></span>
+            <span>SOURCES</span>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    for index, citation in enumerate(
-        citations,
-        start=1,
-    ):
+    # --------------------------------------------------------
+    # 5. SOURCE CARDS
+    # --------------------------------------------------------
 
-        citation_id = citation.get(
-            "citation_id",
-            f"S{index}",
-        )
+    for item in normalized:
 
-        source = html.escape(
-            str(
-                citation.get(
-                    "source",
-                    "Unknown source",
-                )
-            )
-        )
+        source = str(item["source"])
+        page = item.get("page")
+        chunk = item.get("chunk")
 
-        page = citation.get("page")
-
-        chunk_id = citation.get(
-            "chunk_id",
-            "unknown",
-        )
-
-        metadata = []
+        meta = []
 
         if page is not None:
+            meta.append(f"Page {page}")
 
-            metadata.append(
-                f"Page {page}"
-            )
+        if chunk:
+            meta.append(f"Chunk {chunk}")
 
-        if chunk_id:
-
-            metadata.append(
-                f"Chunk {html.escape(str(chunk_id))}"
-            )
-
-        st.markdown(
-            f"""
-            <div class="rf-source">
-
-                <div class="rf-source-title">
-                    {html.escape(str(citation_id))}
-                    ·
-                    {source}
-                </div>
-
-                <div class="rf-source-meta">
-                    {" · ".join(metadata)}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
+        metadata_html = (
+            f'<div class="rag-source-meta">{" · ".join(meta)}</div>'
+            if meta
+            else ""
         )
 
+        st.markdown(
+    f"""<div class="rag-source-card">
+<div class="rag-source-number">{item["id"]}</div>
+<div class="rag-source-content">
+<div class="rag-source-name">{source}</div>
+{metadata_html}
+</div>
+</div>""",
+    unsafe_allow_html=True,
+)
 
 # ============================================================
 # RAG DETAILS
@@ -2535,15 +2818,10 @@ def display_history():
                 )
             )
 
-            if item.get(
-                "route"
-            ) == "rag":
-
+            if item.get("route") == "rag":
                 display_citations(
-                    item.get(
-                        "citations",
-                        [],
-                    )
+                item.get("citations", []),
+                item.get("documents", []),
                 )
 
                 stored_result = item.get(
