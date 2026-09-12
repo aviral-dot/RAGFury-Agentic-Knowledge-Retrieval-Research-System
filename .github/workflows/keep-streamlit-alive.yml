@@ -12,5 +12,7 @@ jobs:
     steps:
       - name: Ping Streamlit app
         run: |
-          curl -L --fail --max-time 30 \
-            "https://ragfury.streamlit.app/"
+          curl --fail --max-time 30 \
+            " https://ragfury.streamlit.app/"
+
+
