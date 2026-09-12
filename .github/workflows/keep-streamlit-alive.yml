@@ -13,6 +13,4 @@ jobs:
       - name: Ping Streamlit app
         run: |
           curl --fail --max-time 30 \
-            " https://ragfury.streamlit.app/"
-
-
+            "https://ragfury.streamlit.app/"
