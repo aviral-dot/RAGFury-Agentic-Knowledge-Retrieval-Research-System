@@ -1,5 +1,3 @@
-
-
 # 🚀 RAGFury — Agentic Knowledge Retrieval & Research System
 
 > **A production-oriented Agentic RAG platform that routes requests between private knowledge retrieval and conversational AI, performs hybrid search with Qdrant Cloud, validates retrieved context with security and relevance guardrails, persists conversational state, caches repeated queries, applies distributed rate limiting, and exposes the system through a FastAPI API and Streamlit interface.**
@@ -347,20 +345,20 @@ This provides two complementary retrieval signals:
 
 Useful for:
 
-* semantic similarity
-* paraphrased questions
-* conceptual matches
-* meaning-based retrieval
+- semantic similarity
+- paraphrased questions
+- conceptual matches
+- meaning-based retrieval
 
 ### Sparse retrieval
 
 Useful for:
 
-* exact terminology
-* policy names
-* identifiers
-* keyword-heavy questions
-* rare terms
+- exact terminology
+- policy names
+- identifiers
+- keyword-heavy questions
+- rare terms
 
 Combining the two improves robustness over relying on a single retrieval signal.
 
@@ -1060,15 +1058,15 @@ https://ragfury.vercel.app
 
 The frontend includes:
 
-* conversational chat interface
-* source cards
-* citation display
-* response metadata
-* responsive layout
-* custom visual styling
-* animated interface elements
-* API connectivity status
-* conversation workspace
+- conversational chat interface
+- source cards
+- citation display
+- response metadata
+- responsive layout
+- custom visual styling
+- animated interface elements
+- API connectivity status
+- conversation workspace
 
 The frontend dependency set is intentionally separated through:
 
@@ -1957,31 +1955,31 @@ This makes individual subsystems replaceable without rewriting the entire applic
 
 | Capability                   | Basic RAG |  RAGFury  |
 | ---------------------------- | :-------: | :-------: |
-| PDF ingestion                |     ✅     |     ✅     |
-| Dense retrieval              |     ✅     |     ✅     |
-| Sparse retrieval             | Sometimes |     ✅     |
-| Hybrid retrieval             | Sometimes |     ✅     |
-| Qdrant Cloud                 |     ❌     |     ✅     |
-| Native RRF                   |     ❌     |     ✅     |
-| Agentic routing              |     ❌     |     ✅     |
-| Relevance grading            |    Rare   |     ✅     |
-| Query rewriting              |    Rare   |     ✅     |
-| Corrective retrieval         |    Rare   |     ✅     |
-| Retrieval security guardrail |     ❌     |     ✅     |
-| Input/output guardrails      |     ❌     |     ✅     |
-| Redis short-term memory      |     ❌     |     ✅     |
-| Mem0 long-term memory        |     ❌     |     ✅     |
-| PostgreSQL checkpoints       |     ❌     |     ✅     |
-| Query caching                |     ❌     |     ✅     |
-| Distributed rate limiting    |     ❌     |     ✅     |
-| API layer                    |  Optional |  FastAPI  |
-| Citation-aware response      | Sometimes |     ✅     |
-| LangSmith tracing            |  Optional |     ✅     |
-| Unit testing                 | Sometimes |     ✅     |
-| Integration testing          |    Rare   |     ✅     |
-| RAG evaluation               |    Rare   |     ✅     |
-| Regression gates             |    Rare   |     ✅     |
-| Interactive UI               |  Optional | Streamlit |
+| PDF ingestion                |    ✅     |    ✅     |
+| Dense retrieval              |    ✅     |    ✅     |
+| Sparse retrieval             | Sometimes |    ✅     |
+| Hybrid retrieval             | Sometimes |    ✅     |
+| Qdrant Cloud                 |    ❌     |    ✅     |
+| Native RRF                   |    ❌     |    ✅     |
+| Agentic routing              |    ❌     |    ✅     |
+| Relevance grading            |   Rare    |    ✅     |
+| Query rewriting              |   Rare    |    ✅     |
+| Corrective retrieval         |   Rare    |    ✅     |
+| Retrieval security guardrail |    ❌     |    ✅     |
+| Input/output guardrails      |    ❌     |    ✅     |
+| Redis short-term memory      |    ❌     |    ✅     |
+| Mem0 long-term memory        |    ❌     |    ✅     |
+| PostgreSQL checkpoints       |    ❌     |    ✅     |
+| Query caching                |    ❌     |    ✅     |
+| Distributed rate limiting    |    ❌     |    ✅     |
+| API layer                    | Optional  |  FastAPI  |
+| Citation-aware response      | Sometimes |    ✅     |
+| LangSmith tracing            | Optional  |    ✅     |
+| Unit testing                 | Sometimes |    ✅     |
+| Integration testing          |   Rare    |    ✅     |
+| RAG evaluation               |   Rare    |    ✅     |
+| Regression gates             |   Rare    |    ✅     |
+| Interactive UI               | Optional  | Streamlit |
 
 ---
 
@@ -2045,14 +2043,14 @@ RAGFury is production-oriented, but it is not presented as an enterprise-complet
 
 Current boundaries include:
 
-* Authentication/authorization is not yet a complete identity platform.
-* The knowledge corpus is currently externally indexed rather than providing arbitrary end-user document uploads through the API.
-* Qdrant ingestion is separated from query serving.
-* External web research is not currently a first-class retrieval branch.
-* The current router provides `rag` and `chat` workflows rather than the older Wikipedia branch.
-* Production deployment depends on external managed infrastructure.
-* Evaluation quality depends on the maintained golden datasets and evaluation configuration.
-* The current system is designed primarily as a portfolio/interview-ready production-style AI engineering project rather than a fully managed enterprise SaaS product.
+- Authentication/authorization is not yet a complete identity platform.
+- The knowledge corpus is currently externally indexed rather than providing arbitrary end-user document uploads through the API.
+- Qdrant ingestion is separated from query serving.
+- External web research is not currently a first-class retrieval branch.
+- The current router provides `rag` and `chat` workflows rather than the older Wikipedia branch.
+- Production deployment depends on external managed infrastructure.
+- Evaluation quality depends on the maintained golden datasets and evaluation configuration.
+- The current system is designed primarily as a portfolio/interview-ready production-style AI engineering project rather than a fully managed enterprise SaaS product.
 
 These boundaries are intentional and make the current architecture easier to reason about.
 
@@ -2103,72 +2101,72 @@ Building RAGFury demonstrates practical experience with:
 
 ### AI Engineering
 
-* Retrieval-Augmented Generation
-* Agentic workflows
-* LangGraph
-* LangChain
-* Structured LLM outputs
-* Prompt engineering
-* Corrective retrieval
-* Query rewriting
+- Retrieval-Augmented Generation
+- Agentic workflows
+- LangGraph
+- LangChain
+- Structured LLM outputs
+- Prompt engineering
+- Corrective retrieval
+- Query rewriting
 
 ### Retrieval Engineering
 
-* Dense retrieval
-* Sparse retrieval
-* Hybrid search
-* BM25
-* Qdrant
-* Reciprocal Rank Fusion
-* Semantic document processing
-* Retrieval evaluation
+- Dense retrieval
+- Sparse retrieval
+- Hybrid search
+- BM25
+- Qdrant
+- Reciprocal Rank Fusion
+- Semantic document processing
+- Retrieval evaluation
 
 ### AI Reliability
 
-* Relevance grading
-* Retrieval security validation
-* Input guardrails
-* Output guardrails
-* Abstention handling
-* Retry boundaries
-* Regression evaluation
+- Relevance grading
+- Retrieval security validation
+- Input guardrails
+- Output guardrails
+- Abstention handling
+- Retry boundaries
+- Regression evaluation
 
 ### Memory Systems
 
-* Redis short-term memory
-* Mem0 long-term memory
-* Persistent conversation state
-* PostgreSQL LangGraph checkpoints
+- Redis short-term memory
+- Mem0 long-term memory
+- Persistent conversation state
+- PostgreSQL LangGraph checkpoints
 
 ### Backend Engineering
 
-* FastAPI
-* Async execution
-* API schemas
-* Request validation
-* Error handling
-* Rate limiting
-* Distributed caching
-* Health checks
+- FastAPI
+- Async execution
+- API schemas
+- Request validation
+- Error handling
+- Rate limiting
+- Distributed caching
+- Health checks
 
 ### MLOps / AI Observability
 
-* LangSmith tracing
-* Structured logging
-* Trace metadata
-* Trace sanitization
-* Retrieval metrics
-* Evaluation datasets
-* Regression gates
+- LangSmith tracing
+- Structured logging
+- Trace metadata
+- Trace sanitization
+- Retrieval metrics
+- Evaluation datasets
+- Regression gates
 
 ### Application Engineering
 
-* Streamlit
-* Docker Compose
-* Environment-based configuration
-* Serverless-friendly architecture
-* Background workers
-* Dependency management with uv
+- Streamlit
+- Docker Compose
+- Environment-based configuration
+- Serverless-friendly architecture
+- Background workers
+- Dependency management with uv
 
 ---
 
