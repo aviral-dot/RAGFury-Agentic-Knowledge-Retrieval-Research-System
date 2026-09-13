@@ -34,6 +34,8 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "deepeval>=4.2.2",
+    "langchain-openai>=1.6.2",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.5",
